@@ -10,10 +10,10 @@ const setup = async () => {
     let {setup} = require('./index')
     await setup({
         nodeEnv: process.env.NODE_ENV || "development",
-        redisUrl: process.env.TEMPL8_REDIS_URL || process.env.REDIS_URL ||
+        redisUrl: process.env.ORCHESTR8_REDIS_URL || process.env.REDIS_URL ||
             "redis://localhost:6379",
-        postgresConnectionString: process.env.TEMPL8_POSTGRES_URL || process.env.POSTGRES_URL ||
-            "postgres://postgres:example@localhost:5432/templ8",
+        postgresConnectionString: process.env.ORCHESTR8_POSTGRES_URL || process.env.POSTGRES_URL ||
+            "postgres://postgres:example@localhost:5432/orchestr8",
     })
 }
 

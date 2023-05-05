@@ -1,4 +1,4 @@
-# templ8
+# orchestr8
 A node application?
 
 Express, Knex, Postgres, Jake, and ioRedis

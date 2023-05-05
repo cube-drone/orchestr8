@@ -1,5 +1,5 @@
 {
-  "name": "@cube-drone/templ8",
+  "name": "@cube-drone/orchestr8",
   "version": "1.0.0",
   "description": "It's a node application, darn tootin",
   "main": "index.js",
@@ -8,14 +8,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cube-drone/templ8.git"
+    "url": "git+https://github.com/cube-drone/orchestr8.git"
   },
   "author": "Curtis Lassam",
   "license": "AGPL-3.0-or-later",
   "bugs": {
-    "url": "https://github.com/cube-drone/templ8/issues"
+    "url": "https://github.com/cube-drone/orchestr8/issues"
   },
-  "homepage": "https://github.com/cube-drone/templ8#readme",
+  "homepage": "https://github.com/cube-drone/orchestr8#readme",
   "dependencies": {
     "@cube-drone/rundmc": "^1.0.3",
     "axios": "^1.4.0",

@@ -1,6 +1,6 @@
 // Update with your config settings.
-const postgresConnectionString = process.env.TEMPL8_POSTGRES_URL || process.env.POSTGRES_URL || 
-    "postgres://postgres:example@localhost:5432/templ8";
+const postgresConnectionString = process.env.ORCHESTR8_POSTGRES_URL || process.env.POSTGRES_URL || 
+    "postgres://postgres:example@localhost:5432/orchestr8";
 
 /**
  * @type { Object.<string, import("knex").Knex.Config> }
