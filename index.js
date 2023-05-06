@@ -13,7 +13,19 @@ const jsonParser = bodyParser.json()
 const urlencodedParser = bodyParser.urlencoded({ extended: false })
 
 //--------------------------
-async function main({nodeEnv, envPort, cookieSecret, redisUrl, postgresConnectionString}){
+async function main({
+    nodeEnv, 
+    envPort, 
+    cookieSecret, 
+    redisUrl, 
+    postgresConnectionString, 
+    minPort, 
+    maxPort, 
+    dockerSocketPath,
+    npmGitApiUrl,
+    npmRegistryUrl,
+    npmRegistryToken,
+}){
     app.use(cookieParser(cookieSecret))
 
     // we are going to deploy this behind nginx
@@ -26,6 +38,27 @@ async function main({nodeEnv, envPort, cookieSecret, redisUrl, postgresConnectio
         connection: postgresConnectionString
     });  
     const redis = new Redis(redisUrl);
+
+    const deployModel = require('./models/deploy')({
+        nodeEnv, 
+        sqlDatabase, 
+        redis, 
+        minPort,
+        maxPort, 
+        dockerSocketPath,
+        npmGitApiUrl,
+        npmRegistryUrl,
+        npmRegistryToken
+    })
+
+    await deployModel.createTestData()
+
+    setInterval(deployModel.reconcile, 1000*60) // every minute
+    if(nodeEnv !== "production"){
+        // while we're on dev, we want to re-run this on any change
+        await redis.unlink("reconcile-lock");
+    }
+    await deployModel.reconcile()
 
     let noopMiddleware = async (req, res, next) => {
         next()

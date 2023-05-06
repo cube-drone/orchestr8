@@ -29,6 +29,7 @@
     "jake": "^10.8.5",
     "knex": "^2.4.2",
     "morgan": "^1.10.0",
+    "node-docker-api": "^1.1.22",
     "pg": "^8.10.0"
   },
   "devDependencies": {
