@@ -45,6 +45,7 @@ async function main({
         nodeEnv, 
         hostName,
         sqlDatabase, 
+        postgresConnectionString,
         redis, 
         minPort,
         maxPort, 

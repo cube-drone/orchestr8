@@ -2,9 +2,15 @@ const {Docker} = require('node-docker-api');
 const npmApi = require('npm-api');
 const util = require('util');
 const axios = require('axios');
+const delay = require('delay');
+const { Redis } = require("ioredis")
+const assert = require("assert");
+const { connectAndSetup, connectionStringChangeDatabase } = require('../database-setup');
 
 module.exports = ({
     nodeEnv="development", 
+    hostName,
+    postgresConnectionString,
     sqlDatabase, 
     redis, 
     minPort=12000,
@@ -62,7 +68,10 @@ module.exports = ({
 
         dockerContainers.forEach((container) => {
             let name = container.data.Names[0].replace(/^\//, "")
-            let port = container.data.Ports[0].PublicPort
+            let port
+            if(container.data.Ports && container.data.Ports.length > 0){
+                port = container.data.Ports[0].PublicPort
+            }
             let state = container.data.State
             let status = container.data.Status
             let image = container.data.Image
@@ -105,6 +114,29 @@ module.exports = ({
         return port
     }
 
+    const getContainer = async (name) => {
+        let containers = await docker.container.list({all: true})
+        let matchingContainers = containers.filter((container) => {
+            return container.data.Names[0] === `/${name}`
+        })
+        if(matchingContainers.length === 0){
+            return null
+        }
+        return matchingContainers[0]
+    }
+
+    const destroyContainer = async (name) => {
+        console.warn(`destroying ${name}...`)
+        let container = await getContainer(name)
+        if(container){
+            await container.delete({force: true})
+            console.warn(`destroyed ${name}...`)
+        }
+        else{
+            console.warn(`nothing to destroy at ${name}`)
+        }
+    }
+
     // ------------------------------------------------------------
     // NPM Helpers
     const getPackageVersions = async (packageName) => {
@@ -125,23 +157,80 @@ module.exports = ({
     // ------------------------------------------------------------
     // Bringing It All Together
 
-    const deployPostgres = async (deployTarget) => {
+    const checkPostgres = async (deployTarget) => {
+        if(deployTarget.postgres){
+            if(!deployTarget.postgresUrl){
+                // this deployment wants a postgres but doesn't have one yet
+                console.warn(`connection string: ${postgresConnectionString}`)
+                let postgresUrl = connectionStringChangeDatabase(postgresConnectionString, deployTarget.name)            
+                console.warn(`Creating database ${postgresUrl}...`)
+                await connectAndSetup({postgresConnectionString: postgresUrl});
+
+                await sqlDatabase('deploy_targets').update({postgresUrl}).where('id', deployTarget.id)
+            }
+        }
+
         return deployTarget
     }
 
     const deployRedis = async (deployTarget) => {
+        let password = crypto.randomUUID();
+        // this deployment wants a redis but doesn't have one yet
+        let port = await getPort()
+        // start docker container for redis
+        // TODO: include a password
+        console.log(`Starting redis container for ${deployTarget.name} on port ${port}`)
+        
+        // replace the redis with one that we control
+        await destroyContainer(`${deployTarget.name}-redis`)
+        
+        // pchoo pchoo
+        let container = await getContainer(`${deployTarget.name}-redis`)
+        if(container == null){
+            container = await docker.container.create({
+                Image: 'redis:alpine',
+                name: `${deployTarget.name}-redis`,
+                HostConfig: {
+                    PortBindings: {
+                        "6379/tcp": [
+                            {
+                                HostPort: port.toString()
+                            }
+                        ]
+                    }
+                },
+                Cmd: ['redis-server', '--requirepass', password]
+            });
+        }
+        await container.start()
+
+        let redisUrl = `redis://:${password}@${hostName}:${port}`
+        await delay(500);
+        
+        let redis = new Redis(redisUrl);
+        await redis.set("hello", "world", "EX", 60);
+        let hello = await redis.get("hello")
+        assert(hello === "world")
+
+        console.log("ok!")
+
+        // save the redisUrl against the deploy_target in the database (so that we can use it later)
+        await sqlDatabase('deploy_targets').update({redisUrl}).where('id', deployTarget.id)
+    }
+
+    const checkRedis = async (deployTarget) => {
+        // check if there's a redis container running for this deployment
+        // if there isn't, start it and add its url to the deployTarget
         if(deployTarget.redis){
             if(!deployTarget.redisUrl){
-                // this deployment wants a redis but doesn't have one yet
-
-
+                deployRedis(deployTarget)
             }
-            // check if there's a redis container running for this deployment
-            // if there isn't, start it and add its url to the deployTarget
+            else{
+                console.log(`Redis already running for ${deployTarget.name}`)
+            }
         }
         else{
-            // check if there's a redis container running for this deployment
-            // if there is, stop it
+            destroyContainer(`${deployTarget.name}-redis`)
         }
         return deployTarget
     }
@@ -156,38 +245,44 @@ module.exports = ({
 
     const reconcileDeployTarget = async (deployTarget) => {
         // get a list of things running in docker
-        let {byPort, byName} = await dockerList()
-        //console.dir(byPort)
-        //console.dir(byName)
-        console.dir(deployTarget)
-        
-        let container = byName[deployTarget.name]
-        let versionObjects = []
         try{
-            versionObjects = await getPackageVersions(deployTarget.packageName)
+            let {byPort, byName} = await dockerList()
+            //console.dir(byPort)
+            //console.dir(byName)
+            console.dir(deployTarget)
+            
+            let container = byName[deployTarget.name]
+            let versionObjects = []
+            try{
+                versionObjects = await getPackageVersions(deployTarget.packageName)
+            }
+            catch(err){
+                console.error(err)
+                console.error(`Can't get package versions for ${deployTarget.name}, not doing anything`)
+                return
+            }
+            versionObjects = versionObjects.map((versionObject) => {
+                return {
+                    version: versionObject.name,
+                    created: versionObject.created_at
+                }
+            })
+            //console.dir(versionObjects)
+            
+            if(deployTarget.enabled){
+                // other checks here but we're going to skip past them for now
+                deployTarget = await checkPostgres(deployTarget)
+                deployTarget = await checkRedis(deployTarget)
+                await deploy({deployTarget, version: versionObjects[0]})            
+            }
+            else{
+                // check if there are containers running for this deployment
+                //   if there are, stop them
+            }
         }
         catch(err){
+            console.error(`Error reconciling ${deployTarget.name}`);
             console.error(err)
-            console.error(`Can't get package versions for ${deployTarget.name}, not doing anything`)
-            return
-        }
-        versionObjects = versionObjects.map((versionObject) => {
-            return {
-                version: versionObject.name,
-                created: versionObject.created_at
-            }
-        })
-        //console.dir(versionObjects)
-        
-        if(deployTarget.enabled){
-            // other checks here but we're going to skip past them for now
-            deployTarget = await deployPostgres(deployTarget)
-            deployTarget = await deployRedis(deployTarget)
-            await deploy({deployTarget, version: versionObjects[0]})            
-        }
-        else{
-            // check if there are containers running for this deployment
-            //   if there are, stop them
         }
     }
 
@@ -216,8 +311,6 @@ module.exports = ({
         // for each deployment: is it running? is it healthy?
         
         await redis.unlink("reconcile-lock")
-
-
     }
 
     return {

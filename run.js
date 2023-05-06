@@ -2,7 +2,7 @@ let { main } = require('./index')
 
 const nodeEnv = process.env.NODE_ENV || "development";
 const hostName = process.env.ORCHESTR8_HOST_NAME || process.env.HOST_NAME || 
-    "orchestr8.groovelet.com";
+    "groovelet.local";
 const envPort = process.env.ORCHESTR8_PORT || 9494;
 const cookieSecret = process.env.ORCHESTR8_SECRET || "toots ahoy";
 const redisUrl = process.env.ORCHESTR8_REDIS_URL || process.env.REDIS_URL || 
@@ -35,9 +35,7 @@ if(!npmRegistryToken){
         const npmrcPath = path.join(os.homedir(), ".npmrc");
         const npmrc = fs.readFileSync(npmrcPath, 'utf8');
         const npmrcLines = npmrc.split("\n");
-        console.warn(npmrcLines)
         let registryMatch = npmRegistryUrl.replace(/https?:/, "")
-        console.warn(registryMatch)
         for(let i=0; i<npmrcLines.length; i++){
             let line = npmrcLines[i];
             if(line.startsWith(registryMatch)){

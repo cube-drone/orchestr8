@@ -74,6 +74,13 @@ async function connectAndSetup({postgresConnectionString, retries = 5}){
     return sqlDatabase;
 }
 
+function connectionStringChangeDatabase(connectionString, newDatabaseName){
+    let pgConnectionUrl = new URL(connectionString);
+    pgConnectionUrl.pathname = `/${newDatabaseName}`;
+    return pgConnectionUrl.toString();
+}
+
 module.exports = {
     connectAndSetup,
+    connectionStringChangeDatabase,
 }

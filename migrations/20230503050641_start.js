@@ -13,6 +13,7 @@ exports.up = function(knex) {
         table.integer('nodes').defaultTo(1);            // number of node processes to run
         table.boolean('enabled').defaultTo(true);       // should the app be on at all?
         table.boolean('postgres').defaultTo(true);      // should the app get a postgres URL?
+        table.string('postgresUrl', 256).nullable()     // postgres://localhost:5432/thing-to-deploy
         /*
             postgres and redis work differently, here: 
                 we assume that postgres is hosted outside of orchestr8, 
