@@ -9,6 +9,7 @@ module.exports = ({
     redis, 
     minPort=12000,
     maxPort=13000,
+    memoryCap=8192,
     npmGitApiUrl,
     npmRegistryUrl='https://npm.pkg.github.com',
     npmRegistryToken,
@@ -31,11 +32,14 @@ module.exports = ({
                     id: crypto.randomUUID(),
                     name: "templ8",
                     packageName: "@cube-drone/templ8",
-                    hostname: "localhost",
+                    domain: 'groovelet.local',
+                    subdomain: 'templ8',
                     enabled: true,
                     postgres: true,
                     redis: true,
-                    redisMemory: 256
+                    redisMemory: 256,
+                    created_at: new Date(),
+                    updated_at: new Date()
                 })
             }
         }
@@ -82,6 +86,25 @@ module.exports = ({
         }
     }
 
+    const getPort = async () => {
+        let {byPort} = await dockerList()
+        // generate a range of numbers between minPort and maxPort
+        let ports = []
+        for(let i=minPort; i<=maxPort; i++){
+            ports.push(i)
+        }
+        // remove any ports that are already in use
+        ports = ports.filter((port) => {
+            return !byPort[port]
+        })
+        if(ports.length === 0){
+            throw new Error("No ports available")
+        }
+        // pick a random port from the list
+        let port = ports[Math.floor(Math.random() * ports.length)];
+        return port
+    }
+
     // ------------------------------------------------------------
     // NPM Helpers
     const getPackageVersions = async (packageName) => {
@@ -101,6 +124,27 @@ module.exports = ({
 
     // ------------------------------------------------------------
     // Bringing It All Together
+
+    const deployPostgres = async (deployTarget) => {
+        return deployTarget
+    }
+
+    const deployRedis = async (deployTarget) => {
+        if(deployTarget.redis){
+            if(!deployTarget.redisUrl){
+                // this deployment wants a redis but doesn't have one yet
+
+
+            }
+            // check if there's a redis container running for this deployment
+            // if there isn't, start it and add its url to the deployTarget
+        }
+        else{
+            // check if there's a redis container running for this deployment
+            // if there is, stop it
+        }
+        return deployTarget
+    }
 
     const deploy = async({deployTarget, version}) => {
         // pick a port for this deployment
@@ -137,6 +181,8 @@ module.exports = ({
         
         if(deployTarget.enabled){
             // other checks here but we're going to skip past them for now
+            deployTarget = await deployPostgres(deployTarget)
+            deployTarget = await deployRedis(deployTarget)
             await deploy({deployTarget, version: versionObjects[0]})            
         }
         else{

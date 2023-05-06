@@ -15,12 +15,14 @@ const urlencodedParser = bodyParser.urlencoded({ extended: false })
 //--------------------------
 async function main({
     nodeEnv, 
+    hostName,
     envPort, 
     cookieSecret, 
     redisUrl, 
     postgresConnectionString, 
     minPort, 
     maxPort, 
+    memoryCap,
     dockerSocketPath,
     npmGitApiUrl,
     npmRegistryUrl,
@@ -41,10 +43,12 @@ async function main({
 
     const deployModel = require('./models/deploy')({
         nodeEnv, 
+        hostName,
         sqlDatabase, 
         redis, 
         minPort,
         maxPort, 
+        memoryCap,
         dockerSocketPath,
         npmGitApiUrl,
         npmRegistryUrl,

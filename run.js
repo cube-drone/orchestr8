@@ -1,6 +1,8 @@
 let { main } = require('./index')
 
 const nodeEnv = process.env.NODE_ENV || "development";
+const hostName = process.env.ORCHESTR8_HOST_NAME || process.env.HOST_NAME || 
+    "orchestr8.groovelet.com";
 const envPort = process.env.ORCHESTR8_PORT || 9494;
 const cookieSecret = process.env.ORCHESTR8_SECRET || "toots ahoy";
 const redisUrl = process.env.ORCHESTR8_REDIS_URL || process.env.REDIS_URL || 
@@ -8,8 +10,12 @@ const redisUrl = process.env.ORCHESTR8_REDIS_URL || process.env.REDIS_URL ||
 const postgresConnectionString = process.env.ORCHESTR8_POSTGRES_URL || process.env.POSTGRES_URL || 
     "postgres://postgres:example@localhost:5432/orchestr8";
 // the range between minPort and maxPort will be used for deployments
-const minPort = process.env.ORCHESTR8_MIN_PORT || 12000;
-const maxPort = process.env.ORCHESTR8_MAX_PORT || 13000;
+let minPort = process.env.ORCHESTR8_MIN_PORT || 12000;
+minPort = parseInt(minPort)
+let maxPort = process.env.ORCHESTR8_MAX_PORT || 13000;
+maxPort = parseInt(maxPort)
+let memoryCap = process.env.MEMORY_CAP || 8192;
+memoryCap = parseInt(memoryCap)
 const dockerSocketPath = process.env.ORCHESTR8_DOCKER_SOCKET_PATH || "/var/run/docker.sock";
 const npmGitApiUrl = process.env.ORCHESTR8_NPM_GIT_API_URL || "https://api.github.com";
 const npmRegistryUrl = process.env.ORCHESTR8_NPM_REGISTRY_URL || "https://npm.pkg.github.com";
@@ -52,13 +58,15 @@ if(!npmRegistryToken){
 }
 
 main({
-    nodeEnv, 
+    nodeEnv,
+    hostName, 
     envPort, 
     cookieSecret, 
     redisUrl, 
     postgresConnectionString,
     minPort,
     maxPort,
+    memoryCap,
     dockerSocketPath,
     npmGitApiUrl,
     npmRegistryToken,
