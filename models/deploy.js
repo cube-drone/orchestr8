@@ -321,6 +321,9 @@ module.exports = ({
         container = await docker.container.create({
             Image: "node:20",
             name: `${deployTarget.name}-${version}`,
+            ExposedPorts: {
+                "9999/tcp": {}
+            },
             HostConfig: {
                 PortBindings: {
                     "9999/tcp": [
