@@ -1,14 +1,17 @@
-let { main } = require('./index')
+#!/usr/bin/env node
+
+let { main, setup } = require('./index')
 
 const nodeEnv = process.env.NODE_ENV || "development";
 const hostName = process.env.ORCHESTR8_HOST_NAME || process.env.HOST_NAME || 
     "groovelet.local";
-const envPort = process.env.ORCHESTR8_PORT || 9494;
-const cookieSecret = process.env.ORCHESTR8_SECRET || "toots ahoy";
+const envPort = process.env.ORCHESTR8_PORT || process.env.PORT || 9494;
+const cookieSecret = process.env.ORCHESTR8_SECRET || process.env.COOKIE_SECRET || "toots ahoy";
 const redisUrl = process.env.ORCHESTR8_REDIS_URL || process.env.REDIS_URL || 
     "redis://localhost:6379";
 const postgresConnectionString = process.env.ORCHESTR8_POSTGRES_URL || process.env.POSTGRES_URL || 
     "postgres://postgres:example@localhost:5432/orchestr8";
+const postgresContainerName = process.env.ORCHESTR8_POSTGRES_CONTAINER_NAME || "orchestr8_postgres_1";
 // the range between minPort and maxPort will be used for deployments
 let minPort = process.env.ORCHESTR8_MIN_PORT || 12000;
 minPort = parseInt(minPort)
@@ -62,6 +65,7 @@ main({
     cookieSecret, 
     redisUrl, 
     postgresConnectionString,
+    postgresContainerName,
     minPort,
     maxPort,
     memoryCap,

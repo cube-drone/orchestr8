@@ -23,7 +23,7 @@ task('setup', setup)
 const start = async () => {
     await run("docker-compose up -d")
     await setup()
-    await run("nodemon run.js")
+    await run("nodemon bin.js")
 }
 desc("Boot up the server.")
 task('start', start)
@@ -47,7 +47,7 @@ const cleanTest = async () => {
     await run("docker-compose down")
     await run("docker-compose up -d")
     await setup()
-    let proc = runBg("node run.js")
+    let proc = runBg("node bin.js")
 
     let success = false
     let messages = []

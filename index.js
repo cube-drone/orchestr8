@@ -20,6 +20,7 @@ async function main({
     cookieSecret, 
     redisUrl, 
     postgresConnectionString, 
+    postgresContainerName,
     minPort, 
     maxPort, 
     memoryCap,
@@ -44,8 +45,10 @@ async function main({
     const deployModel = require('./models/deploy')({
         nodeEnv, 
         hostName,
+        cookieSecret,
         sqlDatabase, 
         postgresConnectionString,
+        postgresContainerName,
         redis, 
         minPort,
         maxPort, 
@@ -90,11 +93,7 @@ async function main({
         let pong = await redis.get("ponk")
         assert.strictEqual(pong, "toots ahoy")
 
-        await sqlDatabase('table_1').insert({
-            id: crypto.randomUUID(),
-            name: "toots ahoy"
-        })
-        res.send(":)")
+        res.send("orchestr8 :)")
     })
 
     app.listen(envPort)

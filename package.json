@@ -32,6 +32,7 @@
     "node-docker-api": "^1.1.22",
     "pg": "^8.10.0"
   },
+  "bin": "./bin.js",
   "devDependencies": {
     "mocha": "^10.2.0"
   }

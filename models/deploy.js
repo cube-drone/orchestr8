@@ -1,6 +1,4 @@
 const {Docker} = require('node-docker-api');
-const npmApi = require('npm-api');
-const util = require('util');
 const axios = require('axios');
 const delay = require('delay');
 const { Redis } = require("ioredis")
@@ -10,7 +8,9 @@ const { connectAndSetup, connectionStringChangeDatabase } = require('../database
 module.exports = ({
     nodeEnv="development", 
     hostName,
+    cookieSecret,
     postgresConnectionString,
+    postgresContainerName,
     sqlDatabase, 
     redis, 
     minPort=12000,
@@ -157,6 +157,14 @@ module.exports = ({
     // ------------------------------------------------------------
     // Bringing It All Together
 
+    const connectToDefaultNetwork = async(container) => {
+        console.warn('connecting to default network...')
+        let defaultNet = await docker.network.get("orchestr8")
+        await defaultNet.connect({
+            Container: container.id
+        });
+    }
+
     const checkPostgres = async (deployTarget) => {
         if(deployTarget.postgres){
             if(!deployTarget.postgresUrl){
@@ -166,7 +174,21 @@ module.exports = ({
                 console.warn(`Creating database ${postgresUrl}...`)
                 await connectAndSetup({postgresConnectionString: postgresUrl});
 
-                await sqlDatabase('deploy_targets').update({postgresUrl}).where('id', deployTarget.id)
+                let url = new URL(postgresUrl)
+                let username = url.username
+                let password = url.password
+
+                let internalPostgresUrl = null
+                if(postgresContainerName){
+                    internalPostgresUrl = `postgres://${username}:${password}@${postgresContainerName}:5432/${deployTarget.name}`
+                }
+
+                await sqlDatabase('deploy_targets').update({
+                    postgresUrl,
+                    internalPostgresUrl
+                }).where('id', deployTarget.id)
+                deployTarget.postgresUrl = postgresUrl
+                deployTarget.internalPostgresUrl = internalPostgresUrl
             }
         }
 
@@ -178,19 +200,27 @@ module.exports = ({
         // this deployment wants a redis but doesn't have one yet
         let port = await getPort()
         // start docker container for redis
-        // TODO: include a password
         console.log(`Starting redis container for ${deployTarget.name} on port ${port}`)
         
         // replace the redis with one that we control
         await destroyContainer(`${deployTarget.name}-redis`)
         
+        // TODO: memory-restrict this redis from within redis
+        // (build and mount a redis conf) 
+
         // pchoo pchoo
+        console.log(`Creating redis container for ${deployTarget.name} on port ${port}`)
         let container = await getContainer(`${deployTarget.name}-redis`)
         if(container == null){
             container = await docker.container.create({
                 Image: 'redis:alpine',
                 name: `${deployTarget.name}-redis`,
                 HostConfig: {
+                    CpuShares: 1024,
+                    Memory: deployTarget.redisMemory * 1024 * 1024,
+                    RestartPolicy: {
+                        Name: "unless-stopped"
+                    },
                     PortBindings: {
                         "6379/tcp": [
                             {
@@ -199,23 +229,38 @@ module.exports = ({
                         ]
                     }
                 },
-                Cmd: ['redis-server', '--requirepass', password]
+                Cmd: ['redis-server', 
+                        '--requirepass', password, 
+                        '--maxmemory', `${deployTarget.redisMemory-10}mb`]
             });
         }
+        await connectToDefaultNetwork(container);
+        
+        console.log(`Starting container...`)
         await container.start()
 
         let redisUrl = `redis://:${password}@${hostName}:${port}`
+        let internalRedisUrl = `redis://:${password}@${deployTarget.name}-redis:6379`
         await delay(500);
         
+        console.log(`Testing redis container for ${deployTarget.name} on port ${port}`)
         let redis = new Redis(redisUrl);
         await redis.set("hello", "world", "EX", 60);
         let hello = await redis.get("hello")
         assert(hello === "world")
+        console.warn(`\t success!`)
 
         console.log("ok!")
 
         // save the redisUrl against the deploy_target in the database (so that we can use it later)
-        await sqlDatabase('deploy_targets').update({redisUrl}).where('id', deployTarget.id)
+        await sqlDatabase('deploy_targets').update({
+            redisUrl, 
+            internalRedisUrl
+        }).where('id', deployTarget.id)
+
+        deployTarget.redisUrl = redisUrl
+        deployTarget.internalRedisUrl = internalRedisUrl
+        return deployTarget
     }
 
     const checkRedis = async (deployTarget) => {
@@ -223,7 +268,7 @@ module.exports = ({
         // if there isn't, start it and add its url to the deployTarget
         if(deployTarget.redis){
             if(!deployTarget.redisUrl){
-                deployRedis(deployTarget)
+                deployTarget = deployRedis(deployTarget)
             }
             else{
                 console.log(`Redis already running for ${deployTarget.name}`)
@@ -241,6 +286,153 @@ module.exports = ({
         // does this deployment have a postgres requirement?
         // launch a container for this deployment
         // point openresty at the ports we're using
+        
+        // convert process.env into an array of X=Y strings:
+
+        let Env = [
+            "PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin/node",
+            "NODE_ENV=production",
+            "PORT=9999",
+            `COOKIE_SECRET=${cookieSecret}`,
+        ]
+
+        if(deployTarget.redis){
+            let redisUrl = deployTarget.redisUrl
+            if(deployTarget.internalRedisUrl){
+                redisUrl = deployTarget.internalRedisUrl
+            }
+
+            Env.push(`REDIS_URL=${redisUrl}`)
+        }
+        if(deployTarget.postgres){
+            let postgresUrl = deployTarget.postgresUrl
+            if(deployTarget.internalPostgresUrl){
+                postgresUrl = deployTarget.internalPostgresUrl
+            }
+
+            Env.push(`POSTGRES_URL=${postgresUrl}`)
+        }
+
+        let port = await getPort()
+        await destroyContainer(`${deployTarget.name}-${version}`)
+
+        console.warn(`deploying to port ${port}`)
+
+        container = await docker.container.create({
+            Image: "node:20",
+            name: `${deployTarget.name}-${version}`,
+            HostConfig: {
+                PortBindings: {
+                    "9999/tcp": [
+                        {
+                            HostPort: port.toString()
+                        }
+                    ]
+                },
+                CpuShares: 1024,
+                Memory: deployTarget.nodeMemory * 1024 * 1024,
+                RestartPolicy: {
+                    Name: "unless-stopped"
+                },
+                Binds: [
+                    `${process.env.HOME}/.npmrc:/.npmrc:ro`,
+                ],
+            },
+            Env,
+            Cmd: ['/usr/local/bin/npx', '-y', `${deployTarget.packageName}@${version}` ], 
+            },
+        );
+        
+        await connectToDefaultNetwork(container);
+        
+        console.log(`Starting container...`)
+        await container.start()
+    }
+
+    const semverToInt = (version) => {
+        /*
+            this is a quick way to make semver strings sortable
+            it will break a bit if you have more than 100000 patches, but.
+            simply don't do that
+        */
+        let parts = version.split(".")
+        let major = parseInt(parts[0])
+        let minor = parseInt(parts[1])
+        let patch = parseInt(parts[2])
+        return major * 100000000 + minor * 100000 + patch
+    }
+
+    const getCurrentlyDeployedVersion = async ({deployTarget}) => {
+        let mostRecentDeployment = await sqlDatabase('deployments')
+            .where('deployTargetId', deployTarget.id)
+            .where('active', true)
+            .where('broken', false)
+            .orderBy('semverSort', 'desc')
+            .limit(10)
+            .first()
+
+        return mostRecentDeployment 
+    }
+
+    const isVersionOkay = async ({version, deployTarget}) => {
+        /*
+            a version is undeployable if there are any broken deployments using 
+            that version
+        */
+        console.log(`testing version: ${version}`)
+        let matchingDeployments = await sqlDatabase('deployments')
+            .where('version', version)
+            .where('deployTargetId', deployTarget.id)
+            .where('broken', true)
+        if(matchingDeployments.length === 0){
+            return true;
+        }
+        else{
+            return false;
+        }
+    }
+
+    const checkNodes = async ({versionObjects, deployTarget}) => {
+        console.log("getting best version...")
+        let mostRecentDeployment = await getCurrentlyDeployedVersion({deployTarget})
+        let versions = versionObjects.map(versionObject => versionObject.version)
+
+        let bestVersion = null
+        for(let candidateVersion of versions){
+            let isValidCandidate = await isVersionOkay({version:candidateVersion, deployTarget})
+            if(isValidCandidate){
+                bestVersion = candidateVersion
+                break
+            }
+        }
+        
+        if(versions.length == 0){
+            throw new Error("Could not find any versions")
+        }
+        if(mostRecentDeployment && mostRecentDeployment.version == bestVersion){
+            console.log("we're up to date, good")
+            // we're up to date, good
+            return;
+        }
+        else if(!mostRecentDeployment || 
+            semverToInt(mostRecentDeployment.version) < semverToInt(bestVersion)){
+            // there is not a currently deployed version at all for this target
+            // or the currently deployed version is out of date
+            //  so we should run a deploy with the most up to date version
+            if(!mostRecentDeployment){
+                console.log('no currently deployed version')
+            }
+            else{
+                console.log(`currently deployed version: ${mostRecentDeployment.version}`)
+            }
+            console.log(`deploying ${bestVersion}`)
+            await deploy({deployTarget, version: bestVersion})
+        }
+        else {
+            // we've somehow got a deployed version further in the future than our 
+            //  best possible version. Rollback to best possible version? Or do nothing? 
+            return;
+        }
     }
 
     const reconcileDeployTarget = async (deployTarget) => {
@@ -273,7 +465,7 @@ module.exports = ({
                 // other checks here but we're going to skip past them for now
                 deployTarget = await checkPostgres(deployTarget)
                 deployTarget = await checkRedis(deployTarget)
-                await deploy({deployTarget, version: versionObjects[0]})            
+                await checkNodes({deployTarget, versionObjects})            
             }
             else{
                 // check if there are containers running for this deployment
