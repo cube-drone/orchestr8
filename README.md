@@ -14,6 +14,7 @@ This is the shell you need to build the sort of things you build
 * `npm install -g jake`
 * `npm install -g nodemon`
 * `docker pull node:20`
+* `docker pull nginx:alpine`
 * `docker network create orchestr8`
 
 ### Hosts

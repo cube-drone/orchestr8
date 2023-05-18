@@ -9,6 +9,7 @@ exports.up = function(knex) {
         table.string('packageName', 256)                // @cube-drone/thing-to-deploy
         table.string('domain', 256)                     // groovelet.com
         table.string('subdomain', 256).nullable()       // auth
+        table.integer('nginxPort').nullable()           // which port this app should be exposed on
         table.integer('nodeMemory').defaultTo(2048)     // MB
         table.integer('nodes').defaultTo(1)             // number of node processes to run
         table.boolean('enabled').defaultTo(true)        // should the app be on at all?
@@ -31,23 +32,25 @@ exports.up = function(knex) {
         table.integer('redisMemory').defaultTo(256)     // MB
         table.string('redisUrl', 256).nullable()        // redis://localhost:6379
         table.string('internalRedisUrl', 256).nullable()
-        table.string('redisHost', 256).nullable()       // orchestrator host
         table.timestamps() 
     })
     .createTable('deployments', function(table) {
         table.uuid('id').primary() 
         table.uuid('deployTargetId').references('id').inTable('deploy_targets') 
-        table.string('host', 256)                   // this is the orchestrator host
+        table.string('url', 256).nullable()         // 
+        table.string('internalUrl', 256).nullable() // 
+        table.string('problem', 4086).nullable()    // 
         table.string('version', 256)                // 1.0.0
+        table.integer('pings').defaultTo(0)         // how many times has this deployment been pinged?
         table.integer('semverSort')                 // 1000000 (this is an integer version of the semver, for sorting)
-        table.integer('port')                       // 8080
-        table.boolean('active').defaultTo(true)     // "active" means it's running like this right now
+        table.boolean('active').defaultTo(false)    // "active" means it's running like this right now
         table.boolean('broken').defaultTo(false)    // if a deployment gets flagged as broken, it will be disabled
         table.boolean('stable').defaultTo(false)    
         /* 
             if a deployment runs for >30 mins without issues, 
             it becomes stable and is considered a viable backstop for rollbacks
         */
+        table.timestamps()
     })
 };
 

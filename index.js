@@ -42,6 +42,9 @@ async function main({
     });  
     const redis = new Redis(redisUrl);
 
+    // in production, this should be a real alerting service
+    const alert = console.error;
+
     const deployModel = require('./models/deploy')({
         nodeEnv, 
         hostName,
@@ -56,7 +59,8 @@ async function main({
         dockerSocketPath,
         npmGitApiUrl,
         npmRegistryUrl,
-        npmRegistryToken
+        npmRegistryToken,
+        alert
     })
 
     await deployModel.createTestData()

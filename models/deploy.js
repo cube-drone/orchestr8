@@ -1,3 +1,4 @@
+const fs = require('fs').promises;
 const {Docker} = require('node-docker-api');
 const axios = require('axios');
 const delay = require('delay');
@@ -16,9 +17,11 @@ module.exports = ({
     minPort=12000,
     maxPort=13000,
     memoryCap=8192,
+    axiosTimeout=8000,
     npmGitApiUrl,
     npmRegistryUrl='https://npm.pkg.github.com',
     npmRegistryToken,
+    alert,
     dockerSocketPath='/var/run/docker.sock'}) => {
     
     let docker = new Docker({ socketPath: dockerSocketPath });
@@ -40,6 +43,7 @@ module.exports = ({
                     packageName: "@cube-drone/templ8",
                     domain: 'groovelet.local',
                     subdomain: 'templ8',
+                    nodes: 2,
                     enabled: true,
                     postgres: true,
                     redis: true,
@@ -55,6 +59,101 @@ module.exports = ({
         let deployTargets = await sqlDatabase('deploy_targets')
             .select('*')
         return deployTargets
+    }
+    
+    const getCurrentlyDeployedVersion = async ({deployTarget}) => {
+        let mostRecentDeployment = await sqlDatabase('deployments')
+            .where('deployTargetId', deployTarget.id)
+            .where('active', true)
+            .where('broken', false)
+            .orderBy('semverSort', 'desc')
+            .limit(10)
+            .first()
+
+        return mostRecentDeployment 
+    }
+
+    const getAllDeploymentsForVersion = async ({deployTarget, version}) => {
+        let deployments = await sqlDatabase('deployments')
+            .where('deployTargetId', deployTarget.id)
+            .where('version', version)
+        return deployments
+    }
+    const getLatestStableVersion = async ({deployTarget}) => {
+        let mostRecentDeployment = await sqlDatabase('deployments')
+            .where('deployTargetId', deployTarget.id)
+            .where('stable', true).first()
+        return mostRecentDeployment
+    }
+
+    const createVersion = async ({deployTarget, version, url, internalUrl}) => {
+        let versionObject = {
+            id: crypto.randomUUID(),
+            deployTargetId: deployTarget.id,
+            url,
+            internalUrl,
+            version,
+            semverSort: semverToInt(version),
+            active: false,
+            broken: false,
+            stable: false,
+            created_at: new Date(),
+            updated_at: new Date()
+        }
+        await sqlDatabase('deployments').insert(versionObject)
+        return versionObject
+    }
+    const createBrokenVersion = async ({deployTarget, version, problem}) => {
+        let versionObject = {
+            id: crypto.randomUUID(),
+            deployTargetId: deployTarget.id,
+            version,
+            problem,
+            semverSort: semverToInt(version),
+            active: false,
+            broken: true,
+            stable: false,
+            created_at: new Date(),
+            updated_at: new Date()
+        }
+        await sqlDatabase('deployments').insert(versionObject)
+        return versionObject
+    }
+
+    const setVersionToStable = async ({deployTarget, version}) => {
+        await sqlDatabase('deployments')
+            .where('deployTargetId', deployTarget.id)
+            .where('version', version)
+            .update({
+                stable: true,
+                updated_at: new Date()
+            })
+    }
+    const setVersionToActive = async ({deployTarget, version}) => {
+        await sqlDatabase('deployments')
+            .where('deployTargetId', deployTarget.id)
+            .where('version', version)
+            .update({
+                active: true,
+                updated_at: new Date()
+            })
+        // set all other versions to inactive
+        await sqlDatabase('deployments')
+            .where('deployTargetId', deployTarget.id)
+            .where('version', '!=', version)
+            .update({
+                active: false,
+                updated_at: new Date()
+            })
+    }
+    const setVersionToBroken = async ({deployTarget, version}) => {
+        await sqlDatabase('deployments')
+            .where('deployTargetId', deployTarget.id)
+            .where('version', version)
+            .update({
+                broken: true,
+                updated_at: new Date()
+            })
     }
 
     // ------------------------------------------------------------
@@ -95,7 +194,11 @@ module.exports = ({
         }
     }
 
-    const getPort = async () => {
+    const getPort = async (candidatePort) => {
+        /*
+            this function will return a port that's not currently in use
+            if candidatePort is provided, it will be used if it's available
+        */
         let {byPort} = await dockerList()
         // generate a range of numbers between minPort and maxPort
         let ports = []
@@ -108,6 +211,11 @@ module.exports = ({
         })
         if(ports.length === 0){
             throw new Error("No ports available")
+        }
+        if(candidatePort){
+            if(ports.indexOf(candidatePort) != -1){
+                return candidatePort
+            }
         }
         // pick a random port from the list
         let port = ports[Math.floor(Math.random() * ports.length)];
@@ -145,6 +253,7 @@ module.exports = ({
         let response = await axios.get(
             `${npmGitApiUrl}/user/packages/${packageType}/${packageNameWithoutUser}/versions`,
             {
+                timeout: 10000,
                 headers: {
                     'X-Github-Api-Version': '2022-11-28',
                     'Accept': 'application/vnd.github.v3+json',
@@ -203,18 +312,15 @@ module.exports = ({
         console.log(`Starting redis container for ${deployTarget.name} on port ${port}`)
         
         // replace the redis with one that we control
-        await destroyContainer(`${deployTarget.name}-redis`)
+        await destroyContainer(`O-${deployTarget.name}-redis`)
         
-        // TODO: memory-restrict this redis from within redis
-        // (build and mount a redis conf) 
-
         // pchoo pchoo
         console.log(`Creating redis container for ${deployTarget.name} on port ${port}`)
-        let container = await getContainer(`${deployTarget.name}-redis`)
+        let container = await getContainer(`O-${deployTarget.name}-redis`)
         if(container == null){
             container = await docker.container.create({
                 Image: 'redis:alpine',
-                name: `${deployTarget.name}-redis`,
+                name: `O-${deployTarget.name}-redis`,
                 HostConfig: {
                     CpuShares: 1024,
                     Memory: deployTarget.redisMemory * 1024 * 1024,
@@ -240,7 +346,7 @@ module.exports = ({
         await container.start()
 
         let redisUrl = `redis://:${password}@${hostName}:${port}`
-        let internalRedisUrl = `redis://:${password}@${deployTarget.name}-redis:6379`
+        let internalRedisUrl = `redis://:${password}@O-${deployTarget.name}-redis:6379`
         await delay(500);
         
         console.log(`Testing redis container for ${deployTarget.name} on port ${port}`)
@@ -275,19 +381,108 @@ module.exports = ({
             }
         }
         else{
-            destroyContainer(`${deployTarget.name}-redis`)
+            destroyContainer(`O-${deployTarget.name}-redis`)
         }
         return deployTarget
     }
 
-    const deploy = async({deployTarget, version}) => {
-        // pick a port for this deployment
-        // does this deployment have a redis requirement?
-        // does this deployment have a postgres requirement?
-        // launch a container for this deployment
-        // point openresty at the ports we're using
+    const loadBalancer = async ({deployTarget, version, deployedUrls, deployCode}) => {
+        /*
+            this function will update the load balancer to point at the given deployedUrls
+        */
+        let loadBalancerName = `O-${deployTarget.name}-nginx`
         
-        // convert process.env into an array of X=Y strings:
+        // update the load balancer config
+        let loadBalancerConfig = `
+            upstream ${deployTarget.name} {
+                ${deployedUrls.map(({url, internalUrl}) => {
+                    return `server ${internalUrl.replace('http://', '')};`
+                }).join("\n")}
+            }
+                
+            server {
+                listen 80  default_server;
+                location / {
+                    proxy_pass http://${deployTarget.name};
+                    
+                    proxy_set_header Host $host;
+                    proxy_set_header X-Real-IP $remote_addr;
+                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                    proxy_set_header X-Deploy ${deployCode};
+                    proxy_set_header X-Deploy-Target ${deployTarget.name};
+                    proxy_set_header X-Deploy-Version ${version};
+                }
+            }
+        `
+        let fullLoadBalancerConfig = `
+        events{
+            worker_connections 1024;
+        }
+        http{
+            ${loadBalancerConfig}
+        }
+        `
+
+        // now we need to update the load balancer config
+        // create the .orchestr8 directory if it doesn't exist
+        try {
+            await fs.mkdir(`${process.env.HOME}/.orchestr8`)
+        } catch(err){/* ignore */}
+
+        let loadBalancerConfigPath = `${process.env.HOME}/.orchestr8/${deployTarget.name}.conf`
+        await fs.writeFile(loadBalancerConfigPath, fullLoadBalancerConfig)
+
+        let loadBalancer = await getContainer(loadBalancerName)
+        if(loadBalancer == null){
+            // create the load balancer
+            console.log(`Creating load balancer for ${deployTarget.name}`)
+            // start docker container for nginx
+            let port = await getPort(deployTarget.nginxPort)
+            let container = await docker.container.create({
+                Image: 'nginx:alpine',
+                name: loadBalancerName,
+                HostConfig: {
+                    CpuShares: 1024,
+                    Memory: 256 * 1024 * 1024,
+                    RestartPolicy: {
+                        Name: "unless-stopped"
+                    },
+                    PortBindings: {
+                        "80/tcp": [
+                            {
+                                HostPort: port.toString()
+                            }
+                        ]
+                    },
+                    //mount the config file to the location of nginx's config file
+                    Binds: [
+                        `${process.env.HOME}/.orchestr8/${deployTarget.name}.conf:/etc/nginx/nginx.conf:ro`,
+                    ],
+                },
+                Cmd: ['nginx', '-g', 'daemon off;']
+            });
+            // save the port against the deploy_target in the database
+            if(deployTarget.nginxPort != port){
+                await sqlDatabase('deploy_targets').update({
+                    nginxPort: port
+                }).where('id', deployTarget.id)
+            }
+
+            await connectToDefaultNetwork(container);
+            await container.start()
+        }
+        // restart the load balancer to pick up the new config
+        console.log(`Restarting load balancer for ${deployTarget.name}`)
+        loadBalancer = await getContainer(loadBalancerName)
+        await loadBalancer.restart()
+    }
+
+    const launch = async({deployTarget, version, discriminator, timeoutSeconds=45}) => {
+        /*
+            this function will launch a container for the given deployTarget and version
+            the container will be named O-${deployTarget.name}-node-${version}-${discriminator}
+            (where the "discriminator" is used to differentiate between multiple containers)
+        */
 
         let Env = [
             "PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin/node",
@@ -320,7 +515,7 @@ module.exports = ({
 
         container = await docker.container.create({
             Image: "node:20",
-            name: `${deployTarget.name}-${version}`,
+            name: `O-${deployTarget.name}-node-${version}-${discriminator}`,
             ExposedPorts: {
                 "9999/tcp": {}
             },
@@ -350,6 +545,83 @@ module.exports = ({
         
         console.log(`Starting container...`)
         await container.start()
+
+        let url = `http://${hostName}:${port}`
+        let internalUrl = `http://O-${deployTarget.name}-node-${version}-${discriminator}:9999`
+
+        await testNode({url, internalUrl})
+        console.log(`Success: container for ${deployTarget.name} on port ${port} responded!`)
+
+        return {
+            url, 
+            internalUrl
+        }
+    }
+    
+    const deploy = async({deployTarget, version}) => {
+        let deployCode = crypto.randomUUID().split('-')[0]
+        let deployedUrls = []
+        try{
+            for(let i = 0; i < deployTarget.nodes; i++){
+                let discriminator = `${deployCode}-${i.toString().padStart(2, "0")}`
+                // each deployedUrl is a pair of `url` and `internalUrl`
+                //  url is the externally accessible url
+                //  internalUrl is the url that other containers should use to access this one
+                deployedUrls.push(await launch({deployTarget, version, discriminator}))
+            }
+        }
+        catch(err){
+            // this would be where we'd mark this deploy as broken
+            // we also need to clean up the failed deploy
+            let containers = await dockerList()
+            let deployedContainers = Object.values(containers.byName).filter((container) => {
+                return container.name.startsWith(`O-${deployTarget.name}-node`) &&
+                        container.name.indexOf(deployCode) != -1
+            })
+            await createBrokenVersion({
+                deployTarget,
+                version,
+                problem: err.message.substring(0, 4086)
+            })
+            await Promise.all(deployedContainers.map((container) => {
+                console.warn(`deploy failed, deleting ${container.name}`)
+                return destroyContainer(container.name)
+            }))
+            throw err
+        }
+        // create the version object in the database
+        for(let deployedUrl of deployedUrls){
+            await createVersion({
+                deployTarget,
+                version,
+                url: deployedUrl.url,
+                internalUrl: deployedUrl.internalUrl
+            })
+        }
+        // point the load balancer at the new deployment
+        await loadBalancer({deployTarget, version, deployedUrls, deployCode})
+        // mark the version as active
+        await setVersionToActive({deployTarget, version})
+        // destroy the containers of the old deployment
+        let containers = await dockerList()
+        let oldContainers = Object.values(containers.byName).filter((container) => {
+            return container.name.startsWith(`O-${deployTarget.name}-node`) &&
+                    container.name.indexOf(deployCode) == -1
+        })
+        await Promise.all(oldContainers.map((container) => {
+            console.warn(`deleting ${container.name}`)
+            return destroyContainer(container.name)
+        }))
+    }
+
+    const deployLatestStable = async ({deployTarget}) => {
+        let latestStableVersion = await getLatestStableVersion({deployTarget})
+        if(latestStableVersion){
+            await deploy({deployTarget, version: latestStableVersion.version})
+        }
+        else{
+            throw new Error("No stable version to deploy")
+        }
     }
 
     const semverToInt = (version) => {
@@ -363,18 +635,6 @@ module.exports = ({
         let minor = parseInt(parts[1])
         let patch = parseInt(parts[2])
         return major * 100000000 + minor * 100000 + patch
-    }
-
-    const getCurrentlyDeployedVersion = async ({deployTarget}) => {
-        let mostRecentDeployment = await sqlDatabase('deployments')
-            .where('deployTargetId', deployTarget.id)
-            .where('active', true)
-            .where('broken', false)
-            .orderBy('semverSort', 'desc')
-            .limit(10)
-            .first()
-
-        return mostRecentDeployment 
     }
 
     const isVersionOkay = async ({version, deployTarget}) => {
@@ -393,6 +653,75 @@ module.exports = ({
         else{
             return false;
         }
+    }
+
+    const testNode = async ({url, internalUrl, timeoutSeconds=45}) => {
+        console.log(`Testing ${url}/${internalUrl}...`)
+        let connected = false
+        let totalMs = 0
+        while(!connected){
+            try{
+                let response = await axios.get(`${url}/test`, {timeout: axiosTimeout})
+                if(response.status === 200){
+                    connected = true
+                }
+            }
+            catch(err){
+                console.error(`... failed to connect to port ${url}, trying again...`)
+            }
+            try{
+                let response = await axios.get(`${internalUrl}/test`, {timeout: axiosTimeout})
+                if(response.status === 200){
+                    connected = true
+                }
+            }
+            catch(err){
+                console.error(`... failed to connect to port ${internalUrl}, trying again...`)
+            }
+            await delay(200)
+            totalMs += 200
+            if(totalMs > timeoutSeconds * 1000){
+                throw new Error(`Timeout waiting for ${url} to respond`)
+            }
+        }
+        console.log(`Success: ${url}/${internalUrl} responded!`)
+    }
+
+    const testNodes = async ({deployTarget, version}) => {
+        console.warn(`testing all nodes for ${deployTarget.name}...`)
+        let deployments = await getAllDeploymentsForVersion({deployTarget, version})
+        for(let deployment of deployments){
+            try{
+                await testNode({url: deployment.url, internalUrl: deployment.internalUrl})
+                // it worked! increment the "pings" counter
+                await sqlDatabase('deployments')
+                    .where('id', deployment.id)
+                    .update({
+                        pings: deployment.pings + 1,
+                        updated_at: new Date()
+                    })
+                if(deployment.pings + 1 > 10 && deployment.stable == false){
+                    // this deployment is stable
+                    console.log(`marking ${deployment.id} as stable`)
+                    await setVersionToStable({deployTarget, version})
+                }
+            }
+            catch(err){
+                console.warn(`deployment ${deployment.id} is broken`)
+                await setVersionToBroken({deployTarget, version})
+                if(!deployment.stable){
+                    console.warn(`rolling back to stable version`)
+                    await deployLatestStable({deployTarget})
+                }
+                else{
+                    console.error(`no stable version to roll back to!!!`)
+                    // this would be a good place to send an alert
+                    alert(`deployTarget ${deployTarget.name} is broken with no stable version to roll back to!!!`)
+                }
+                return
+            }
+        }
+        console.warn(`all deployments for ${deployTarget.name} are healthy`)
     }
 
     const checkNodes = async ({versionObjects, deployTarget}) => {
@@ -414,8 +743,7 @@ module.exports = ({
         }
         if(mostRecentDeployment && mostRecentDeployment.version == bestVersion){
             console.log("we're up to date, good")
-            // we're up to date, good
-            return;
+            await testNodes({deployTarget, version: bestVersion})
         }
         else if(!mostRecentDeployment || 
             semverToInt(mostRecentDeployment.version) < semverToInt(bestVersion)){
@@ -482,7 +810,7 @@ module.exports = ({
     }
 
     const reconcile = async () => {
-        let redisLock = await redis.set("reconcile-lock", "1", "NX", "EX", 70);
+        let redisLock = await redis.set("reconcile-lock", "1", "NX", "EX", 300);
         if(!redisLock){
             console.log("Reconciliation already running.")
             return;

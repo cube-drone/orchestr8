@@ -30,6 +30,11 @@ task('start', start)
 
 desc("unbootup the server")
 task('clean', async () => {
+    // remove .orchestr8
+    await run("rm -rf ~/.orchestr8")
+    // kill every container managed by orchestr8
+    await run(`docker ps -a -q --filter="name=O-" | xargs docker rm -f`)
+    // kill orchestr8's backing services
     await run("docker-compose down")
 })
 
