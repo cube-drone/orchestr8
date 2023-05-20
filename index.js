@@ -70,7 +70,7 @@ async function main({
         // while we're on dev, we want to re-run this on any change
         await redis.unlink("reconcile-lock");
     }
-    await deployModel.reconcile()
+    setImmediate(deployModel.reconcile)
 
     let noopMiddleware = async (req, res, next) => {
         next()
@@ -98,6 +98,11 @@ async function main({
         assert.strictEqual(pong, "toots ahoy")
 
         res.send("orchestr8 :)")
+    })
+
+    app.get('/', async function (req, res) {
+        let deployments = await deployModel.getStatusReport()
+        res.json(deployments)
     })
 
     app.listen(envPort)

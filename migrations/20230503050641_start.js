@@ -41,6 +41,8 @@ exports.up = function(knex) {
         table.string('internalUrl', 256).nullable() // 
         table.string('problem', 4086).nullable()    // 
         table.string('version', 256)                // 1.0.0
+        table.string('discriminator', 256)          // 
+        table.integer('port').defaultTo(0)          // 
         table.integer('pings').defaultTo(0)         // how many times has this deployment been pinged?
         table.integer('semverSort')                 // 1000000 (this is an integer version of the semver, for sorting)
         table.boolean('active').defaultTo(false)    // "active" means it's running like this right now

@@ -86,7 +86,19 @@ module.exports = ({
         return mostRecentDeployment
     }
 
-    const createVersion = async ({deployTarget, version, url, internalUrl}) => {
+    const getActiveDeployments = async () => {
+        // use a join to get the deployTarget name
+        let activeDeployments = await sqlDatabase('deployments')
+            .join('deploy_targets', 'deployments.deployTargetId', '=', 'deploy_targets.id')
+            .select('deployments.*', 
+                'deploy_targets.name', 
+                'deploy_targets.packageName')
+            .where('active', true)
+            .where('broken', false)
+        return activeDeployments
+    }
+
+    const createVersion = async ({deployTarget, version, url, internalUrl, discriminator, port}) => {
         let versionObject = {
             id: crypto.randomUUID(),
             deployTargetId: deployTarget.id,
@@ -94,6 +106,8 @@ module.exports = ({
             internalUrl,
             version,
             semverSort: semverToInt(version),
+            discriminator,
+            port,
             active: false,
             broken: false,
             stable: false,
@@ -509,7 +523,6 @@ module.exports = ({
         }
 
         let port = await getPort()
-        await destroyContainer(`${deployTarget.name}-${version}`)
 
         console.warn(`deploying to port ${port}`)
 
@@ -549,12 +562,14 @@ module.exports = ({
         let url = `http://${hostName}:${port}`
         let internalUrl = `http://O-${deployTarget.name}-node-${version}-${discriminator}:9999`
 
-        await testNode({url, internalUrl})
+        await testNode({url, internalUrl, timeoutSeconds})
         console.log(`Success: container for ${deployTarget.name} on port ${port} responded!`)
 
         return {
             url, 
-            internalUrl
+            internalUrl,
+            discriminator,
+            port
         }
     }
     
@@ -595,7 +610,9 @@ module.exports = ({
                 deployTarget,
                 version,
                 url: deployedUrl.url,
-                internalUrl: deployedUrl.internalUrl
+                internalUrl: deployedUrl.internalUrl,
+                discriminator: deployedUrl.discriminator,
+                port: deployedUrl.port
             })
         }
         // point the load balancer at the new deployment
@@ -684,15 +701,19 @@ module.exports = ({
                 throw new Error(`Timeout waiting for ${url} to respond`)
             }
         }
-        console.log(`Success: ${url}/${internalUrl} responded!`)
+        console.log(`Success: ${url} or ${internalUrl} responded!`)
     }
 
-    const testNodes = async ({deployTarget, version}) => {
+    const testNodes = async ({deployTarget, version, timeoutSeconds=45}) => {
         console.warn(`testing all nodes for ${deployTarget.name}...`)
         let deployments = await getAllDeploymentsForVersion({deployTarget, version})
         for(let deployment of deployments){
             try{
-                await testNode({url: deployment.url, internalUrl: deployment.internalUrl})
+                await testNode({
+                    url: deployment.url, 
+                    internalUrl: deployment.internalUrl, 
+                    timeoutSeconds
+                })
                 // it worked! increment the "pings" counter
                 await sqlDatabase('deployments')
                     .where('id', deployment.id)
@@ -836,8 +857,29 @@ module.exports = ({
         await redis.unlink("reconcile-lock")
     }
 
+    const getStatusReport = async () => {
+        let activeDeployments = await getActiveDeployments()
+        let {byPort} = await dockerList()
+        
+        deployments = activeDeployments.map(deploy => {
+            deploy.container = byPort[deploy.port]
+            deploy.fart = "toot"
+            delete deploy.id
+            delete deploy.deployTargetId
+            delete deploy.url
+            delete deploy.internalUrl
+            delete deploy.container.port
+            delete deploy.port
+            return deploy
+        })
+
+        return deployments
+    }
+
     return {
         createTestData,
+        getActiveDeployments,
         reconcile,
+        getStatusReport,
     }
 }
