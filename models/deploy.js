@@ -860,8 +860,11 @@ module.exports = ({
     const getStatusReport = async () => {
         let activeDeployments = await getActiveDeployments()
         let {byPort} = await dockerList()
+        // inactive deployments
+        let otherThings = await getDeployTargets()
         
         deployments = activeDeployments.map(deploy => {
+            otherThings = otherThings.filter(thing => thing.name != deploy.name)
             deploy.container = byPort[deploy.port]
             deploy.fart = "toot"
             delete deploy.id
@@ -873,7 +876,22 @@ module.exports = ({
             return deploy
         })
 
-        return deployments
+        otherThings = otherThings.map(thing => {
+            return {
+                name: thing.name,
+                packageName: thing.packageName,
+                enabled: thing.enabled,
+                nodes: thing.nodes,
+                domain: thing.domain,
+                subdomain: thing.subdomain,
+                created_at: thing.created_at,
+                updated_at: thing.updated_at,
+                active: false,
+            }
+
+        })
+
+        return [...deployments, ...otherThings]
     }
 
     return {
