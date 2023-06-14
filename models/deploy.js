@@ -790,12 +790,8 @@ module.exports = ({
     const reconcileDeployTarget = async (deployTarget) => {
         // get a list of things running in docker
         try{
-            let {byPort, byName} = await dockerList()
-            //console.dir(byPort)
-            //console.dir(byName)
             console.dir(deployTarget)
             
-            let container = byName[deployTarget.name]
             let versionObjects = []
             try{
                 versionObjects = await getPackageVersions(deployTarget.packageName)
