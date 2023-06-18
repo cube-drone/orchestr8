@@ -6,21 +6,8 @@ task('default', async () => {
     return run("npx jake -T")
 });
 
-const setup = async () => {
-    let {setup} = require('./index')
-    await setup({
-        nodeEnv: process.env.NODE_ENV || "development",
-        postgresConnectionString: process.env.ORCHESTR8_POSTGRES_URL || process.env.POSTGRES_URL ||
-            "postgres://postgres:example@localhost:5432/orchestr8",
-    })
-}
-
-desc("Build the database")
-task('setup', setup)
-
 const start = async () => {
     await run("docker-compose up -d")
-    await setup()
     await run("nodemon bin.js")
 }
 desc("Boot up the server.")

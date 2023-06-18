@@ -100,9 +100,8 @@ async function main({
     console.log(`Listening on port ${envPort}...`)
 }
 
-async function setup({nodeEnv, envPort, postgresConnectionString}){
+async function setup({postgresConnectionString}){
     /*
-        this is run once, during a deploy
         it makes sure that a database table exists for this applicaiton,
         and then runs any knex migrations that are needed
     */
