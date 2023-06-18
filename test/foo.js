@@ -11,7 +11,7 @@ describe('Test the foo system', async function () {
         });
         it('connects to databases and such', async function () {
             let response = await http.get('/test')
-            assert.strictEqual(response.data, ":)")
+            assert.strictEqual(response.data, "orchestr8 :)")
         });
     });
 

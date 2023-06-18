@@ -1,4 +1,5 @@
 const fs = require('fs').promises;
+const crypto = require('crypto');
 const {Docker} = require('node-docker-api');
 const axios = require('axios');
 const delay = require('delay');
@@ -7,13 +8,13 @@ const assert = require("assert");
 const { connectAndSetup, connectionStringChangeDatabase } = require('../database-setup');
 
 module.exports = ({
-    nodeEnv="development", 
+    nodeEnv="development",
     hostName,
     cookieSecret,
     postgresConnectionString,
     postgresContainerName,
-    sqlDatabase, 
-    redis, 
+    sqlDatabase,
+    redis,
     minPort=12000,
     maxPort=13000,
     memoryCap=8192,
@@ -23,7 +24,7 @@ module.exports = ({
     npmRegistryToken,
     alert,
     dockerSocketPath='/var/run/docker.sock'}) => {
-    
+
     let docker = new Docker({ socketPath: dockerSocketPath });
 
     // ------------------------------------------------------------
@@ -32,12 +33,12 @@ module.exports = ({
         if(nodeEnv !== "production"){
             // count the entries in the deploy_targets table
             let count = parseInt((await sqlDatabase('deploy_targets').count('id as count').first()).count)
-            
+
             if(count === 0){
                 console.warn("creating default (dev) deploy target")
                 // ah ah ah
                 // create default deploy target
-                await sqlDatabase('deploy_targets').insert({ 
+                await sqlDatabase('deploy_targets').insert({
                     id: crypto.randomUUID(),
                     name: "templ8",
                     packageName: "@cube-drone/templ8",
@@ -60,7 +61,7 @@ module.exports = ({
             .select('*')
         return deployTargets
     }
-    
+
     const getCurrentlyDeployedVersion = async ({deployTarget}) => {
         let mostRecentDeployment = await sqlDatabase('deployments')
             .where('deployTargetId', deployTarget.id)
@@ -70,7 +71,7 @@ module.exports = ({
             .limit(10)
             .first()
 
-        return mostRecentDeployment 
+        return mostRecentDeployment
     }
 
     const getAllDeploymentsForVersion = async ({deployTarget, version}) => {
@@ -90,8 +91,8 @@ module.exports = ({
         // use a join to get the deployTarget name
         let activeDeployments = await sqlDatabase('deployments')
             .join('deploy_targets', 'deployments.deployTargetId', '=', 'deploy_targets.id')
-            .select('deployments.*', 
-                'deploy_targets.name', 
+            .select('deployments.*',
+                'deploy_targets.name',
                 'deploy_targets.packageName')
             .where('active', true)
             .where('broken', false)
@@ -199,7 +200,7 @@ module.exports = ({
                 // it's only occupying the port if it's running
                 contanersByPort[port] = containerObj
             }
-            containersByName[name] = containerObj 
+            containersByName[name] = containerObj
         })
 
         return {
@@ -293,7 +294,7 @@ module.exports = ({
             if(!deployTarget.postgresUrl){
                 // this deployment wants a postgres but doesn't have one yet
                 console.warn(`connection string: ${postgresConnectionString}`)
-                let postgresUrl = connectionStringChangeDatabase(postgresConnectionString, deployTarget.name)            
+                let postgresUrl = connectionStringChangeDatabase(postgresConnectionString, deployTarget.name)
                 console.warn(`Creating database ${postgresUrl}...`)
                 await connectAndSetup({postgresConnectionString: postgresUrl});
 
@@ -324,10 +325,10 @@ module.exports = ({
         let port = await getPort()
         // start docker container for redis
         console.log(`Starting redis container for ${deployTarget.name} on port ${port}`)
-        
+
         // replace the redis with one that we control
         await destroyContainer(`O-${deployTarget.name}-redis`)
-        
+
         // pchoo pchoo
         console.log(`Creating redis container for ${deployTarget.name} on port ${port}`)
         let container = await getContainer(`O-${deployTarget.name}-redis`)
@@ -349,20 +350,20 @@ module.exports = ({
                         ]
                     }
                 },
-                Cmd: ['redis-server', 
-                        '--requirepass', password, 
+                Cmd: ['redis-server',
+                        '--requirepass', password,
                         '--maxmemory', `${deployTarget.redisMemory-10}mb`]
             });
         }
         await connectToDefaultNetwork(container);
-        
+
         console.log(`Starting container...`)
         await container.start()
 
         let redisUrl = `redis://:${password}@${hostName}:${port}`
         let internalRedisUrl = `redis://:${password}@O-${deployTarget.name}-redis:6379`
         await delay(500);
-        
+
         console.log(`Testing redis container for ${deployTarget.name} on port ${port}`)
         let redis = new Redis(redisUrl);
         await redis.set("hello", "world", "EX", 60);
@@ -374,7 +375,7 @@ module.exports = ({
 
         // save the redisUrl against the deploy_target in the database (so that we can use it later)
         await sqlDatabase('deploy_targets').update({
-            redisUrl, 
+            redisUrl,
             internalRedisUrl
         }).where('id', deployTarget.id)
 
@@ -405,7 +406,7 @@ module.exports = ({
             this function will update the load balancer to point at the given deployedUrls
         */
         let loadBalancerName = `O-${deployTarget.name}-nginx`
-        
+
         // update the load balancer config
         let loadBalancerConfig = `
             upstream ${deployTarget.name} {
@@ -413,12 +414,12 @@ module.exports = ({
                     return `server ${internalUrl.replace('http://', '')};`
                 }).join("\n")}
             }
-                
+
             server {
                 listen 80  default_server;
                 location / {
                     proxy_pass http://${deployTarget.name};
-                    
+
                     proxy_set_header Host $host;
                     proxy_set_header X-Real-IP $remote_addr;
                     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -550,12 +551,12 @@ module.exports = ({
                 ],
             },
             Env,
-            Cmd: ['/usr/local/bin/npx', '-y', `${deployTarget.packageName}@${version}` ], 
+            Cmd: ['/usr/local/bin/npx', '-y', `${deployTarget.packageName}@${version}` ],
             },
         );
-        
+
         await connectToDefaultNetwork(container);
-        
+
         console.log(`Starting container...`)
         await container.start()
 
@@ -566,13 +567,13 @@ module.exports = ({
         console.log(`Success: container for ${deployTarget.name} on port ${port} responded!`)
 
         return {
-            url, 
+            url,
             internalUrl,
             discriminator,
             port
         }
     }
-    
+
     const deploy = async({deployTarget, version}) => {
         let deployCode = crypto.randomUUID().split('-')[0]
         let deployedUrls = []
@@ -656,7 +657,7 @@ module.exports = ({
 
     const isVersionOkay = async ({version, deployTarget}) => {
         /*
-            a version is undeployable if there are any broken deployments using 
+            a version is undeployable if there are any broken deployments using
             that version
         */
         console.log(`testing version: ${version}`)
@@ -710,8 +711,8 @@ module.exports = ({
         for(let deployment of deployments){
             try{
                 await testNode({
-                    url: deployment.url, 
-                    internalUrl: deployment.internalUrl, 
+                    url: deployment.url,
+                    internalUrl: deployment.internalUrl,
                     timeoutSeconds
                 })
                 // it worked! increment the "pings" counter
@@ -758,7 +759,7 @@ module.exports = ({
                 break
             }
         }
-        
+
         if(versions.length == 0){
             throw new Error("Could not find any versions")
         }
@@ -766,7 +767,7 @@ module.exports = ({
             console.log("we're up to date, good")
             await testNodes({deployTarget, version: bestVersion})
         }
-        else if(!mostRecentDeployment || 
+        else if(!mostRecentDeployment ||
             semverToInt(mostRecentDeployment.version) < semverToInt(bestVersion)){
             // there is not a currently deployed version at all for this target
             // or the currently deployed version is out of date
@@ -781,8 +782,8 @@ module.exports = ({
             await deploy({deployTarget, version: bestVersion})
         }
         else {
-            // we've somehow got a deployed version further in the future than our 
-            //  best possible version. Rollback to best possible version? Or do nothing? 
+            // we've somehow got a deployed version further in the future than our
+            //  best possible version. Rollback to best possible version? Or do nothing?
             return;
         }
     }
@@ -794,7 +795,7 @@ module.exports = ({
             //console.dir(byPort)
             //console.dir(byName)
             console.dir(deployTarget)
-            
+
             let container = byName[deployTarget.name]
             let versionObjects = []
             try{
@@ -812,12 +813,12 @@ module.exports = ({
                 }
             })
             //console.dir(versionObjects)
-            
+
             if(deployTarget.enabled){
                 // other checks here but we're going to skip past them for now
                 deployTarget = await checkPostgres(deployTarget)
                 deployTarget = await checkRedis(deployTarget)
-                await checkNodes({deployTarget, versionObjects})            
+                await checkNodes({deployTarget, versionObjects})
             }
             else{
                 // check if there are containers running for this deployment
@@ -851,9 +852,9 @@ module.exports = ({
             .where('deployments.active', true)
             .where('deploy_targets.enabled', true)
         */
-        
+
         // for each deployment: is it running? is it healthy?
-        
+
         await redis.unlink("reconcile-lock")
     }
 
@@ -862,7 +863,7 @@ module.exports = ({
         let {byPort} = await dockerList()
         // inactive deployments
         let otherThings = await getDeployTargets()
-        
+
         deployments = activeDeployments.map(deploy => {
             otherThings = otherThings.filter(thing => thing.name != deploy.name)
             deploy.container = byPort[deploy.port]
