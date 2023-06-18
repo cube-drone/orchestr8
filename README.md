@@ -12,7 +12,8 @@ are going to be deployed.
 
 ### notes:
 this communicates with docker a lot using /var/run/docker.sock, which doesn't work on Windows
-because Windows doesn't _have_ that file, or, in fact, support UNIX sockets at all
+because Windows doesn't _have_ that file, or, in fact, support UNIX sockets at all.
+Get out the Mac laptop or use codespaces or something?
 
 ## Install
 
