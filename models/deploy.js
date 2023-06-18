@@ -264,7 +264,9 @@ module.exports = ({
     // NPM Helpers
     const getPackageVersions = async (packageName) => {
         let packageNameWithoutUser = packageName.split('/')[1]
-        let packageType = "npm";
+        let packageType = "npm"
+		console.warn(`getting package versions for ${packageNameWithoutUser}...`)
+		console.log(`Bearer ${npmRegistryToken}`)
         let response = await axios.get(
             `${npmGitApiUrl}/user/packages/${packageType}/${packageNameWithoutUser}/versions`,
             {
@@ -792,7 +794,7 @@ module.exports = ({
         // get a list of things running in docker
         try{
             console.dir(deployTarget)
-            
+
             let versionObjects = []
             try{
                 versionObjects = await getPackageVersions(deployTarget.packageName)
@@ -828,6 +830,9 @@ module.exports = ({
     }
 
     const reconcile = async () => {
+		/*
+			this is the core loop that we run regularly
+		*/
         let redisLock = await redis.set("reconcile-lock", "1", "NX", "EX", 300);
         if(!redisLock){
             console.log("Reconciliation already running.")
@@ -840,21 +845,14 @@ module.exports = ({
 
         await Promise.all(deployTargets.map(reconcileDeployTarget))
 
-        // get a list of deployments: each one of this is active code that's running right now
-        /*
-        let deployments = await sqlDatabase('deployments')
-            .select('deployments.*', 'deploy_targets.name', 'deploy_targets.packageName', 'deploy_targets.hostname')
-            .join('deploy_targets', 'deployments.deployTargetId', 'deploy_targets.id')
-            .where('deployments.active', true)
-            .where('deploy_targets.enabled', true)
-        */
-
-        // for each deployment: is it running? is it healthy?
-
         await redis.unlink("reconcile-lock")
     }
 
     const getStatusReport = async () => {
+		/*
+			this dumps a bunch of deployment information into a json object
+			(it's used by the status page)
+		*/
         let activeDeployments = await getActiveDeployments()
         let {byPort} = await dockerList()
         // inactive deployments

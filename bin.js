@@ -27,6 +27,7 @@ const webhookUrl = process.env.ORCHESTR8_WEBHOOK_URL;
 
 const secretsYmlLocation = process.env.ORCHESTR8_SECRETS_YML_LOCATION || "./secrets.yml";
 const configYmlLocation = process.env.ORCHESTR8_CONFIG_YML_LOCATION || "./config.yml";
+
 let npmRegistryToken = process.env.NODE_AUTH_TOKEN;
 
 // take arguments and do various tasks:
@@ -48,6 +49,7 @@ if(!npmRegistryToken){
             let line = npmrcLines[i];
             if(line.startsWith(registryMatch)){
                 npmRegistryToken = line.split("=")[1];
+				npmRegistryToken = npmRegistryToken.trim();
                 break;
             }
         }

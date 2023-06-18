@@ -9,6 +9,11 @@ If a version responds to enough pings it'll be marked as "stable".
 orchestr8 is loaded with a config.yml file that tells it how the things it's going to deploy
 are going to be deployed.
 
+
+### notes:
+this communicates with docker a lot using /var/run/docker.sock, which doesn't work on Windows
+because Windows doesn't _have_ that file, or, in fact, support UNIX sockets at all
+
 ## Install
 
 ### Basics
@@ -23,5 +28,9 @@ are going to be deployed.
 * `docker network create orchestr8`
 
 ### Hosts
+
+For the sake of testing that this system successfully serves the correct content
+to the correct hostnames, we point groovelet.local to 127.0.0.1
+
 * Add `groovelet.local 127.0.0.1` to your /etc/hosts
 * `c:\windows\system32\drivers\etc\hosts` on windows
