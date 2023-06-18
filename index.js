@@ -14,15 +14,14 @@ const urlencodedParser = bodyParser.urlencoded({ extended: false })
 
 //--------------------------
 async function main({
-    nodeEnv, 
+    nodeEnv,
     hostName,
-    envPort, 
-    cookieSecret, 
-    redisUrl, 
-    postgresConnectionString, 
+    envPort,
+    cookieSecret,
+    postgresConnectionString,
     postgresContainerName,
-    minPort, 
-    maxPort, 
+    minPort,
+    maxPort,
     memoryCap,
     dockerSocketPath,
     npmGitApiUrl,
@@ -39,22 +38,20 @@ async function main({
     const sqlDatabase = require('knex')({
         client: 'pg',
         connection: postgresConnectionString
-    });  
-    const redis = new Redis(redisUrl);
+    });
 
     // in production, this should be a real alerting service
     const alert = console.error;
 
     const deployModel = require('./models/deploy')({
-        nodeEnv, 
+        nodeEnv,
         hostName,
         cookieSecret,
-        sqlDatabase, 
+        sqlDatabase,
         postgresConnectionString,
         postgresContainerName,
-        redis, 
         minPort,
-        maxPort, 
+        maxPort,
         memoryCap,
         dockerSocketPath,
         npmGitApiUrl,
@@ -66,10 +63,6 @@ async function main({
     await deployModel.createTestData()
 
     setInterval(deployModel.reconcile, 1000*60) // every minute
-    if(nodeEnv !== "production"){
-        // while we're on dev, we want to re-run this on any change
-        await redis.unlink("reconcile-lock");
-    }
     setImmediate(deployModel.reconcile)
 
     let noopMiddleware = async (req, res, next) => {
@@ -93,8 +86,6 @@ async function main({
     })
 
     app.get('/test', async function (req, res) {
-        await redis.set("ponk", "toots ahoy", "EX", 60*60*24*7)
-        let pong = await redis.get("ponk")
         assert.strictEqual(pong, "toots ahoy")
 
         res.send("orchestr8 :)")
@@ -109,17 +100,12 @@ async function main({
     console.log(`Listening on port ${envPort}...`)
 }
 
-async function setup({nodeEnv, envPort, redisUrl, postgresConnectionString}){
+async function setup({nodeEnv, envPort, postgresConnectionString}){
     /*
         this is run once, during a deploy
+        it makes sure that a database table exists for this applicaiton,
+        and then runs any knex migrations that are needed
     */
-    const redis = new Redis(redisUrl);
-
-    let lock = await redis.set("setup-lock", "1", "NX", "EX", 30)
-    if(!lock){
-        return;
-    }
-
     let {connectAndSetup} = require('./database-setup')
     let sqlDatabase = await connectAndSetup({postgresConnectionString})
 

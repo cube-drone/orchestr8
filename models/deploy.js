@@ -14,7 +14,6 @@ module.exports = ({
     postgresConnectionString,
     postgresContainerName,
     sqlDatabase,
-    redis,
     minPort=12000,
     maxPort=13000,
     memoryCap=8192,
@@ -829,23 +828,27 @@ module.exports = ({
         }
     }
 
+    let locked = false
     const reconcile = async () => {
 		/*
 			this is the core loop that we run regularly
 		*/
-        let redisLock = await redis.set("reconcile-lock", "1", "NX", "EX", 300);
-        if(!redisLock){
+        if(locked){
             console.log("Reconciliation already running.")
             return;
         }
-        console.log("Running deploy reconciliation...");
+        locked = true;
 
-        // get a list of products that we're supposed to be running
-        let deployTargets = await getDeployTargets()
+        try{
+            console.log("Running deploy reconciliation...");
 
-        await Promise.all(deployTargets.map(reconcileDeployTarget))
+            // get a list of products that we're supposed to be running
+            let deployTargets = await getDeployTargets()
 
-        await redis.unlink("reconcile-lock")
+            await Promise.all(deployTargets.map(reconcileDeployTarget))
+        } finally {
+            locked = false;
+        }
     }
 
     const getStatusReport = async () => {
