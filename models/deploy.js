@@ -22,6 +22,7 @@ module.exports = ({
     npmRegistryUrl='https://npm.pkg.github.com',
     npmRegistryToken,
     alert,
+    info,
     dockerSocketPath='/var/run/docker.sock'}) => {
 
     let docker = new Docker({ socketPath: dockerSocketPath });
@@ -499,6 +500,7 @@ module.exports = ({
             the container will be named O-${deployTarget.name}-node-${version}-${discriminator}
             (where the "discriminator" is used to differentiate between multiple containers)
         */
+        info(`Launching ${deployTarget.name} version ${version} (${discriminator})`)
 
         let Env = [
             "PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin/node",
@@ -601,7 +603,7 @@ module.exports = ({
                 problem: err.message.substring(0, 4086)
             })
             await Promise.all(deployedContainers.map((container) => {
-                console.warn(`deploy failed, deleting ${container.name}`)
+                alert(`deploy failed, deleting ${container.name}`)
                 return destroyContainer(container.name)
             }))
             throw err
@@ -631,6 +633,7 @@ module.exports = ({
             console.warn(`deleting ${container.name}`)
             return destroyContainer(container.name)
         }))
+        info(`Deployed ${deployTarget.name} version ${version}`)
     }
 
     const deployLatestStable = async ({deployTarget}) => {
@@ -733,12 +736,10 @@ module.exports = ({
                 console.warn(`deployment ${deployment.id} is broken`)
                 await setVersionToBroken({deployTarget, version})
                 if(!deployment.stable){
-                    console.warn(`rolling back to stable version`)
+                    alert(`rolling back to stable version`)
                     await deployLatestStable({deployTarget})
                 }
                 else{
-                    console.error(`no stable version to roll back to!!!`)
-                    // this would be a good place to send an alert
                     alert(`deployTarget ${deployTarget.name} is broken with no stable version to roll back to!!!`)
                 }
                 return

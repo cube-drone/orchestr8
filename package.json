@@ -17,7 +17,7 @@
   },
   "homepage": "https://github.com/cube-drone/orchestr8#readme",
   "dependencies": {
-    "@cube-drone/rundmc": "^1.0.3",
+    "@cube-drone/rundmc": "^1.0.5",
     "axios": "^1.4.0",
     "body-parser": "^1.20.2",
     "cookie-parser": "^1.4.6",

@@ -6,6 +6,7 @@ const bodyParser = require('body-parser')
 const cookieParser = require('cookie-parser')
 const morgan = require('morgan')
 const assert = require('assert')
+const axios = require('axios')
 
 const { Redis } = require("ioredis")
 
@@ -27,7 +28,25 @@ async function main({
     npmGitApiUrl,
     npmRegistryUrl,
     npmRegistryToken,
+    alertWebhookUrl,
+    infoWebhookUrl,
 }){
+
+    let alert = console.error;
+    if(alertWebhookUrl){
+        alert = async (message) => {
+            await axios.post(alertWebhookUrl, {text: message})
+        }
+    }
+    let info = console.log;
+    if(infoWebhookUrl){
+        info = async (message) => {
+            await axios.post(infoWebhookUrl, {text: message})
+        }
+    }
+
+    info(`Starting orchestr8 on ${hostName}:${envPort} in ${nodeEnv} mode`);
+
     app.use(cookieParser(cookieSecret))
 
     // we are going to deploy this behind nginx
@@ -39,9 +58,6 @@ async function main({
         client: 'pg',
         connection: postgresConnectionString
     });
-
-    // in production, this should be a real alerting service
-    const alert = console.error;
 
     const deployModel = require('./models/deploy')({
         nodeEnv,
@@ -57,7 +73,8 @@ async function main({
         npmGitApiUrl,
         npmRegistryUrl,
         npmRegistryToken,
-        alert
+        alert,
+        info
     })
 
     await deployModel.createTestData()
@@ -98,6 +115,7 @@ async function main({
 
     app.listen(envPort)
     console.log(`Listening on port ${envPort}...`)
+
 }
 
 async function setup({postgresConnectionString}){

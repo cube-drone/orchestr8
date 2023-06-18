@@ -1,10 +1,29 @@
 let { task, desc } = require('jake');
 let { run, runBg, pipe } = require('@cube-drone/rundmc');
 
+// if we're not running jake, then rundmc can run our tasks, instead
+let isRunningJake = false;
+for(let arg of process.argv){
+    if(arg.indexOf("jake") > -1){
+        isRunningJake = true;
+    }
+}
+if(!isRunningJake){
+    // monkey patch jake's task & desc
+    task = require('@cube-drone/rundmc').task;
+    desc = require('@cube-drone/rundmc').desc;
+}
+
 desc("List all tools & options.")
 task('default', async () => {
     return run("npx jake -T")
 });
+
+const outdated = async () => {
+    await run("npm outdated")
+}
+desc("List outdated dependencies.")
+task('outdated', outdated)
 
 const start = async () => {
     await run("docker-compose up -d")
@@ -21,11 +40,6 @@ task('clean', async () => {
     await run(`docker ps -a -q --filter="name=O-" | xargs docker rm -f`)
     // kill orchestr8's backing services
     await run("docker-compose down")
-})
-
-desc("load local secrets")
-task('secrets', async () => {
-    console.log("run 'source .secrets.sh' to load local secrets")
 })
 
 desc("run tests")

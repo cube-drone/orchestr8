@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { parse, stringify } = require('yaml');
+const { runCommandFromArgsIfArgsExist } = require('@cube-drone/rundmc');
 
 const configYmlLocations = [process.env.ORCHESTR8_CONFIG_YML_LOCATION, "./config.yml", path.join(process.cwd(), 'config.yml'), "/var/config.yml", path.join(os.homedir(), ".orchestr8.yml")];
 console.log(`pwd is ${process.cwd()}, looking for config.yml in ${configYmlLocations.join(", ")}`)
@@ -134,7 +135,21 @@ config.npmRegistryToken = process.env.NODE_AUTH_TOKEN ||
 //    if left blank we'll just save that stuff for the console
 config.webhookUrl = process.env.ORCHESTR8_WEBHOOK_URL ||
     config.webhookUrl ||
+    config.webhook ||
+    config.webHook ||
     config.WEBHOOK_URL;
+
+config.alertWebhookUrl = process.env.ORCHESTR8_ALERT_WEBHOOK_URL ||
+    config.alertWebhookUrl ||
+    config.alertWebhook ||
+    config.alertWebHook ||
+    config.webhookUrl;
+
+config.infoWebhookUrl = process.env.ORCHESTR8_INFO_WEBHOOK_URL ||
+    config.infoWebhookUrl ||
+    config.infoWebhook ||
+    config.infoWebHook ||
+    config.webhookUrl;
 
 // take arguments and do various tasks:
 // * start the server
@@ -175,10 +190,16 @@ if(config.configTest){
     console.dir(config)
 }
 
-setup(config)
+require('./Jakefile')
+
+runCommandFromArgsIfArgsExist()
+    .then(() => {
+        return setup(config)
+    })
     .then(()=>{
         return main(config)
-    }).catch((err) => {
-    console.error(err)
-    process.exit(1)
-})
+    })
+    .catch((err) => {
+        console.error(err)
+        process.exit(1)
+    })
