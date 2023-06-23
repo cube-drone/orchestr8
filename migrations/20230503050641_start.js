@@ -54,15 +54,13 @@ exports.up = function(knex) {
         */
         table.timestamps()
     })
-	/*
-	TODO?
-	.createTable('secrets', function(table){
+	.createTable('env', function(table){
 		table.uuid('id').primary()
-		table.string('name', 256)
-		table.string('encryptedValue', 256)
+        table.uuid('deployTargetId').references('id').inTable('deploy_targets')
+		table.string('key', 256)
+		table.string('value', 256)
 		table.timestamps()
 	})
-	*/
 };
 
 /**
@@ -72,8 +70,6 @@ exports.up = function(knex) {
 exports.down = function(knex) {
     return knex.schema
         .dropTable('deployments')
+		.dropTable('env')
         .dropTable('deploy_targets')
-		/*
-		.dropTable('secrets')
-		*/
 };

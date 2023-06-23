@@ -29,15 +29,41 @@ module.exports = ({
 
     // ------------------------------------------------------------
     // Database Helpers
-    const createTestData = async () => {
-        if(nodeEnv !== "production"){
+    const createData = async ({deploys}) => {
+        /*
+            deploys, here, is an object created from the config YAML file,
+            describing how to deploy each package:
+
+            deploys:
+            - name: templ8
+                packageName: "@cube-drone/templ8"
+                domain: groovelet.com
+                subdomain: templ8
+                nginxPort: 9999
+                nodeMemory: 2048
+                nodes: 1
+                enabled: true
+                postgres: true
+                redis: true
+                redisMemory: 256
+                env:
+                  POOPS: TOOTSAHOY
+                  CHUNKALUNK: DUNKALUNK
+
+            our goal here is to create database entries for each of these,
+            or, if they already exist, update them to match the config.
+
+            if the config is missing a deploy target, we'll disable it.
+
+            if the config is missing entirely, we'll just create some test data (templ8 ho!)
+        */
+        if(deploys == null){
             // count the entries in the deploy_targets table
             let count = parseInt((await sqlDatabase('deploy_targets').count('id as count').first()).count)
 
             if(count === 0){
-                console.warn("creating default (dev) deploy target")
+                console.warn("Config is empty of deploy targets and no deploy targets exist, creating default test deploy target")
                 // ah ah ah
-                // create default deploy target
                 await sqlDatabase('deploy_targets').insert({
                     id: crypto.randomUUID(),
                     name: "templ8",
@@ -54,6 +80,100 @@ module.exports = ({
                 })
             }
         }
+        else{
+            // create the deploy targets
+            for(let deploy of deploys){
+                let existingDeployTarget = await sqlDatabase('deploy_targets')
+                    .where('name', deploy.name)
+                    .first()
+
+                if(existingDeployTarget == null){
+                    let id = crypto.randomUUID();
+                    await sqlDatabase('deploy_targets').insert({
+                        id,
+                        name: deploy.name,
+                        packageName: deploy.packageName,
+                        domain: deploy.domain,
+                        subdomain: deploy.subdomain,
+                        nginxPort: deploy.nginxPort,
+                        nodeMemory: deploy.nodeMemory,
+                        nodes: deploy.nodes,
+                        enabled: deploy.enabled,
+                        postgres: deploy.postgres,
+                        redis: deploy.redis,
+                        redisMemory: deploy.redisMemory,
+                        created_at: new Date(),
+                        updated_at: new Date()
+                    })
+
+                    // regardless of whether this is new or not, update the environment
+                    await updateEnv({deployTarget: {id}, env: deploy.env})
+                }
+                else{
+                    await sqlDatabase('deploy_targets')
+                        .where('name', deploy.name)
+                        .update({
+                            packageName: deploy.packageName,
+                            domain: deploy.domain,
+                            subdomain: deploy.subdomain,
+                            nginxPort: deploy.nginxPort,
+                            nodeMemory: deploy.nodeMemory,
+                            nodes: deploy.nodes,
+                            enabled: deploy.enabled,
+                            postgres: deploy.postgres,
+                            redis: deploy.redis,
+                            redisMemory: deploy.redisMemory,
+                            updated_at: new Date()
+                        })
+                    if(deploy.postgresUrl){
+                        await sqlDatabase('deploy_targets')
+                            .where('name', deploy.name)
+                            .update({
+                                postgresUrl: deploy.postgresUrl
+                            })
+                    }
+                    if(deploy.redisUrl){
+                        await sqlDatabase('deploy_targets')
+                            .where('name', deploy.name)
+                            .update({
+                                redisUrl: deploy.redisUrl
+                            })
+                    }
+                    let id = existingDeployTarget.id
+                    // regardless of whether this is new or not, update the environment
+                    await updateEnv({deployTarget: {id}, env: deploy.env})
+                }
+            }
+        }
+    }
+
+    const updateEnv = async ({deployTarget, env}) => {
+        // update the env vars for a deploy target
+        // first, delete the env
+        await sqlDatabase('env')
+            .where('deployTargetId', deployTarget.id)
+            .delete()
+        // then, insert the new env
+        for(let key in env){
+            await sqlDatabase('env').insert({
+                id: crypto.randomUUID(),
+                deployTargetId: deployTarget.id,
+                key,
+                value: env[key]
+            })
+        }
+    }
+
+    const getEnv = async ({deployTarget}) => {
+        let env = await sqlDatabase('env')
+            .where('deployTargetId', deployTarget.id)
+            .select('*')
+        // create an object with the keys and values of env:
+        let envObject = {}
+        for(let entry of env){
+            envObject[entry.key] = entry.value
+        }
+        return envObject
     }
 
     const getDeployTargets = async () => {
@@ -502,9 +622,16 @@ module.exports = ({
         */
         info(`Launching ${deployTarget.name} version ${version} (${discriminator})`)
 
+        let additionalEnv = await getEnv({deployTarget});
+
+        let envList = Object.keys(additionalEnv).map((key) => {
+            return `${key}=${additionalEnv[key]}`
+        })
+
         let Env = [
+            ...envList,
             "PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin/node",
-            "NODE_ENV=production",
+            `NODE_ENV=${nodeEnv}`,
             "PORT=9999",
             `COOKIE_SECRET=${cookieSecret}`,
         ]
@@ -871,7 +998,6 @@ module.exports = ({
             delete deploy.url
             delete deploy.internalUrl
             delete deploy.container.port
-            delete deploy.port
             return deploy
         })
 
@@ -883,6 +1009,7 @@ module.exports = ({
                 nodes: thing.nodes,
                 domain: thing.domain,
                 subdomain: thing.subdomain,
+                port: thing.port,
                 created_at: thing.created_at,
                 updated_at: thing.updated_at,
                 active: false,
@@ -893,10 +1020,18 @@ module.exports = ({
         return [...deployments, ...otherThings]
     }
 
+    const forgetAll = async () => {
+        // delete everything from the deployments table
+        // (leaving the table itself intact)
+        await sqlDatabase('deployments').del()
+        // this will cause the reconciliation loop to redeploy everything
+    }
+
     return {
-        createTestData,
+        createData,
         getActiveDeployments,
         reconcile,
         getStatusReport,
+        forgetAll,
     }
 }

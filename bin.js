@@ -151,6 +151,11 @@ config.infoWebhookUrl = process.env.ORCHESTR8_INFO_WEBHOOK_URL ||
     config.infoWebHook ||
     config.webhookUrl;
 
+config.forget = process.env.ORCHESTR8_FORGET ||
+    config.forget ||
+    config.FORGET ||
+    false;
+
 // take arguments and do various tasks:
 // * start the server
 // * setup the database

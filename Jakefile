@@ -32,6 +32,13 @@ const start = async () => {
 desc("Boot up the server.")
 task('start', start)
 
+const forget = async () => {
+    await run("docker-compose up -d")
+    await run("ORCHESTR8_FORGET=true nodemon bin.js")
+}
+desc("Forget the deployment history of all the containers.")
+task('forget', forget)
+
 desc("unbootup the server")
 task('clean', async () => {
     // remove .orchestr8

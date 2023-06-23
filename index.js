@@ -30,6 +30,8 @@ async function main({
     npmRegistryToken,
     alertWebhookUrl,
     infoWebhookUrl,
+    deploys,            // if it exists, this is a YAML object describing all of the deployments we're expected to watch
+    forget,             // if true, we will forget all of the deployment history (this should force redeployment of everything)
 }){
 
     let alert = console.error;
@@ -73,11 +75,15 @@ async function main({
         npmGitApiUrl,
         npmRegistryUrl,
         npmRegistryToken,
+        deploys,
         alert,
-        info
+        info,
     })
 
-    await deployModel.createTestData()
+    await deployModel.createData({deploys})
+    if(forget){
+        await deployModel.forgetAll()
+    }
 
     setInterval(deployModel.reconcile, 1000*60) // every minute
     setImmediate(deployModel.reconcile)
