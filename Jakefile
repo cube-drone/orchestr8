@@ -60,7 +60,7 @@ const cleanTest = async () => {
     await run("docker-compose up -d")
     let proc = runBg("node bin.js")
 
-    await delay(5000)
+    await delay(10000)
 
     let success = false
     let messages = []
