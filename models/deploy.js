@@ -483,7 +483,7 @@ module.exports = ({
         console.log(`Starting container...`)
         await container.start()
 
-        let redisUrl = `redis://:${password}@${hostName}:${port}`
+        let redisUrl = `redis://:${password}@localhost:${port}`
         let internalRedisUrl = `redis://:${password}@O-${deployTarget.name}-redis:6379`
         await delay(500);
 
@@ -696,7 +696,7 @@ module.exports = ({
         let url = `http://${hostName}:${port}`
         let internalUrl = `http://O-${deployTarget.name}-node-${version}-${discriminator}:9999`
 
-        await testNode({url, internalUrl, timeoutSeconds})
+        await testNode({url, internalUrl, port, timeoutSeconds})
         console.log(`Success: container for ${deployTarget.name} on port ${port} responded!`)
 
         return {
@@ -807,36 +807,58 @@ module.exports = ({
         }
     }
 
-    const testNode = async ({url, internalUrl, timeoutSeconds=45}) => {
-        console.log(`Testing ${url}/${internalUrl}...`)
+    const testNode = async ({url, internalUrl, port, timeoutSeconds=45}) => {
+        let localUrl = `http://localhost:${port}`
+        console.log(`Testing ${url} and ${internalUrl} and ${localUrl}...`)
         let connected = false
         let totalMs = 0
         while(!connected){
             try{
-                let response = await axios.get(`${url}/test`, {timeout: axiosTimeout})
-                if(response.status === 200){
-                    connected = true
+                if(url){
+                    let response = await axios.get(`${url}/test`, {timeout: axiosTimeout})
+                    if(response.status === 200){
+                        connected = true
+                        console.log(`Success: ${url} responded!`);
+                    }
                 }
             }
             catch(err){
-                console.error(`... failed to connect to port ${url}, trying again...`)
+                console.error(err.message);
+                console.error(`... failed to connect to ${url}, trying again...`)
             }
             try{
-                let response = await axios.get(`${internalUrl}/test`, {timeout: axiosTimeout})
-                if(response.status === 200){
-                    connected = true
+                if(internalUrl){
+                    let response = await axios.get(`${internalUrl}/test`, {timeout: axiosTimeout})
+                    if(response.status === 200){
+                        connected = true
+                        console.log(`Success: ${internalUrl} responded!`);
+                    }
                 }
             }
             catch(err){
-                console.error(`... failed to connect to port ${internalUrl}, trying again...`)
+                console.error(err.message);
+                console.error(`... failed to connect to ${internalUrl}, trying again...`)
             }
+            try{
+                if(localUrl){
+                    let response = await axios.get(`${localUrl}/test`, {timeout: axiosTimeout})
+                    if(response.status === 200){
+                        connected = true
+                        console.log(`Success: ${localUrl} responded!`);
+                    }
+                }
+            }
+            catch(err){
+                console.error(err.message);
+                console.error(`... failed to connect to ${localUrl}, trying again...`)
+            }
+
             await delay(200)
             totalMs += 200
             if(totalMs > timeoutSeconds * 1000){
                 throw new Error(`Timeout waiting for ${url} to respond`)
             }
         }
-        console.log(`Success: ${url} or ${internalUrl} responded!`)
     }
 
     const testNodes = async ({deployTarget, version, timeoutSeconds=45}) => {
@@ -847,6 +869,7 @@ module.exports = ({
                 await testNode({
                     url: deployment.url,
                     internalUrl: deployment.internalUrl,
+                    port: deployment.port,
                     timeoutSeconds
                 })
                 // it worked! increment the "pings" counter
