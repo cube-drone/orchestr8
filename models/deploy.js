@@ -23,6 +23,7 @@ module.exports = ({
     npmRegistryToken,
     alert,
     info,
+    extraEnv,
     dockerSocketPath='/var/run/docker.sock'}) => {
 
     let docker = new Docker({ socketPath: dockerSocketPath });
@@ -626,7 +627,9 @@ module.exports = ({
 
         let envList = Object.keys(additionalEnv).map((key) => {
             return `${key}=${additionalEnv[key]}`
-        })
+        }).concat(Object.keys(extraEnv).map((key) => {
+            return `${key}=${extraEnv[key]}`
+        }))
 
         let Env = [
             ...envList,

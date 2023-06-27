@@ -65,6 +65,7 @@ config.cookieSecret = process.env.ORCHESTR8_SECRET ||
 config.postgresConnectionString = process.env.ORCHESTR8_POSTGRES_URL ||
     process.env.POSTGRES_URL ||
     config.postgresConnectionString ||
+    config.postgresUrl ||
     config.POSTGRES_URL ||
     "postgres://postgres:example@localhost:5432/orchestr8";
 

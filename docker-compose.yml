@@ -1,12 +1,4 @@
 services:
-  redis:
-    image: docker.io/redis:6
-    ports:
-      - "127.0.0.1:6379:6379"
-    environment:
-      - REDIS_AOF_ENABLED=false
-    networks:
-      - orchestr8
   postgres:
     image: docker.io/postgres:12
     ports:

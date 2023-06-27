@@ -8,11 +8,6 @@ const morgan = require('morgan')
 const assert = require('assert')
 const axios = require('axios')
 
-const { Redis } = require("ioredis")
-
-const jsonParser = bodyParser.json()
-const urlencodedParser = bodyParser.urlencoded({ extended: false })
-
 //--------------------------
 async function main({
     nodeEnv,
@@ -61,6 +56,11 @@ async function main({
         connection: postgresConnectionString
     });
 
+    let extraEnv = {
+        INFO_WEBHOOK_URL: infoWebhookUrl,
+        ALERT_WEBHOOK_URL: alertWebhookUrl,
+    }
+
     const deployModel = require('./models/deploy')({
         nodeEnv,
         hostName,
@@ -78,6 +78,7 @@ async function main({
         deploys,
         alert,
         info,
+        extraEnv,
     })
 
     await deployModel.createData({deploys})
