@@ -1,5 +1,6 @@
 let { task, desc } = require('jake');
 let { run, runBg, pipe } = require('@cube-drone/rundmc');
+let delay = require('delay');
 
 // if we're not running jake, then rundmc can run our tasks, instead
 let isRunningJake = false;

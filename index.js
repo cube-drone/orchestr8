@@ -110,8 +110,6 @@ async function main({
     })
 
     app.get('/test', async function (req, res) {
-        assert.strictEqual(pong, "toots ahoy")
-
         res.send("orchestr8 :)")
     })
 
@@ -130,6 +128,12 @@ async function setup({postgresConnectionString}){
         it makes sure that a database table exists for this applicaiton,
         and then runs any knex migrations that are needed
     */
+
+    let { run } = require('@cube-drone/rundmc');
+    await run('docker pull node:20')
+    await run('docker pull nginx:alpine')
+    await run('docker pull redis:alpine')
+
     let {connectAndSetup} = require('./database-setup')
     let sqlDatabase = await connectAndSetup({postgresConnectionString})
 

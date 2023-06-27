@@ -26,6 +26,7 @@ Get out the Mac laptop or use codespaces or something?
 * `npm install -g nodemon`
 * `docker pull node:20`
 * `docker pull nginx:alpine`
+* `docker pull redis:alpine`
 * `docker network create orchestr8`
 
 ### Hosts
