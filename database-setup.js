@@ -14,7 +14,7 @@ async function connectWithoutDatabase(postgresConnectionString){
     const sqlDatabase = require('knex')({
         client: 'pg',
         connection: pgConnectionStringWithoutDatabase,
-    });  
+    });
     return sqlDatabase;
 }
 
@@ -22,7 +22,7 @@ async function connect(postgresConnectionString){
     const sqlDatabase = require('knex')({
         client: 'pg',
         connection: postgresConnectionString,
-    });  
+    });
     return sqlDatabase;
 }
 
@@ -32,7 +32,7 @@ async function connectAndSetup({postgresConnectionString, retries = 5}){
     let pgConnectionSanitized = new URL(postgresConnectionString);
     pgConnectionSanitized.password = "****";
     console.log(`\tconnecting to ${pgConnectionSanitized.toString()}...`)
-    
+
     // we need the databasename for stuff
     let pgConnectionUrl = new URL(postgresConnectionString);
     let databaseName = pgConnectionUrl.pathname.replace("/", "");
@@ -47,6 +47,7 @@ async function connectAndSetup({postgresConnectionString, retries = 5}){
             console.log("\tconnected to database")
         }
         catch(e){
+            console.error(e);
             console.log(`\tfailed to connect to database, retrying in 1 second...`);
             await delay(1000);
             counter++;
@@ -57,7 +58,7 @@ async function connectAndSetup({postgresConnectionString, retries = 5}){
         }
         break;
     }
-    
+
     let databasesSet = new Set(databaseList.rows.map(row => row.datname));
 
     if(databasesSet.has(databaseName)){
