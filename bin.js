@@ -41,7 +41,7 @@ config.hostName = process.env.ORCHESTR8_HOST_NAME ||
     process.env.HOST_NAME ||
     config.hostName ||
     config.HOST_NAME ||
-    "groovelet.local";
+    "127.0.0.1";
 
 config.envPort = process.env.ORCHESTR8_PORT ||
     process.env.PORT ||
