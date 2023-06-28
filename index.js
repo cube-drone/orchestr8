@@ -32,13 +32,25 @@ async function main({
     let alert = console.error;
     if(alertWebhookUrl){
         alert = async (message) => {
-            await axios.post(alertWebhookUrl, {text: message})
+            try{
+                await axios.post(alertWebhookUrl, {text: message})
+            }
+            catch(err){
+                console.log(message);
+                console.error(err.message);
+            }
         }
     }
     let info = console.log;
     if(infoWebhookUrl){
         info = async (message) => {
-            await axios.post(infoWebhookUrl, {text: message})
+            try{
+                await axios.post(infoWebhookUrl, {text: message})
+            }
+            catch(err){
+                console.log(message);
+                console.error(err.message);
+            }
         }
     }
 
