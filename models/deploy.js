@@ -913,9 +913,12 @@ module.exports = ({
                 bestVersion = candidateVersion
                 break
             }
+            else{
+                console.log(`${deployTarget} version ${candidateVersion} is not okay`)
+            }
         }
 
-        if(versions.length == 0){
+        if(bestVersion == null){
             throw new Error("Could not find any versions")
         }
         if(mostRecentDeployment && mostRecentDeployment.version == bestVersion){
