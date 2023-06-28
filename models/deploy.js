@@ -581,9 +581,9 @@ module.exports = ({
         let loadBalancer = await getContainer(loadBalancerName)
         if(loadBalancer == null){
             // create the load balancer
-            console.log(`Creating load balancer for ${deployTarget.name}`)
             // start docker container for nginx
             let port = await getPort(deployTarget.nginxPort)
+            console.log(`Creating load balancer for ${deployTarget.name} on port ${port}`)
             let container = await docker.container.create({
                 Image: 'nginx:alpine',
                 name: loadBalancerName,
