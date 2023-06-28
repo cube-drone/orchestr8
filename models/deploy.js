@@ -335,6 +335,11 @@ module.exports = ({
             this function will return a port that's not currently in use
             if candidatePort is provided, it will be used if it's available
         */
+        if(candidatePort > maxPort || candidatePort < minPort){
+            // if you're outside this applications auto-gen range, I assume you've
+            //  pre-configured your ports, so the one you asked for is fine
+            return candidatePort;
+        }
         let {byPort} = await dockerList()
         // generate a range of numbers between minPort and maxPort
         let ports = []
@@ -351,6 +356,9 @@ module.exports = ({
         if(candidatePort){
             if(ports.indexOf(candidatePort) != -1){
                 return candidatePort
+            }
+            else{
+                throw new Error(`Port ${candidatePort} is already in use`)
             }
         }
         // pick a random port from the list
