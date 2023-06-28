@@ -982,6 +982,8 @@ module.exports = ({
         catch(err){
             console.error(`Error reconciling ${deployTarget.name}`);
             console.error(err)
+
+            alert(`Error reconciling ${deployTarget.name}: ${err}`);
         }
     }
 
