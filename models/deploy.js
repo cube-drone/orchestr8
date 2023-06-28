@@ -914,7 +914,7 @@ module.exports = ({
                 break
             }
             else{
-                console.log(`${deployTarget} version ${candidateVersion} is not okay`)
+                console.log(`${deployTarget.name} version ${candidateVersion} is not okay`)
             }
         }
 
