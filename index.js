@@ -138,8 +138,18 @@ async function setup({postgresConnectionString}){
     let sqlDatabase = await connectAndSetup({postgresConnectionString})
 
     console.log(`\trunning migrations...`);
+
+    // HEY! ME!
+    // If you don't do this next part exactly right, you won't be able to run
+    //  migrations when you launch this app as an npx module:
+    let thisPath = require.resolve("./knexfile.js");
+    thisPath = thisPath.substring(0, thisPath.length - "knexfile.js".length)
+    // join thispath and ./migrations
+    console.log(`looking for migrations on path ${thisPath}`)
+    let migrationsPath = require('path').join(thisPath, "migrations")
+
     await sqlDatabase.migrate.latest({
-        directory: './migrations',
+        directory: migrationsPath,
     })
     let currentVersion = await sqlDatabase.migrate.currentVersion();
     console.warn(`\tcurrent version: ${currentVersion}`);
