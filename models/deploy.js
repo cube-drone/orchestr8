@@ -645,6 +645,7 @@ module.exports = ({
             `NODE_ENV=${nodeEnv}`,
             "PORT=9999",
             `COOKIE_SECRET=${cookieSecret}`,
+            `NPM_VERSION=${version}`,
         ]
 
         if(deployTarget.redis){
